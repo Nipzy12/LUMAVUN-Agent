@@ -80,9 +80,16 @@ When a worker is created:
 2. The department is created if it does not already exist.
 3. Exactly one primary manager is created for that department if none exists.
 4. Duplicate managers are prevented by:
-   - A database unique constraint on `(department_id, agent_type, managed_department_id)`.
-   - A defensive re-select after a flush-time integrity error, so concurrent
-     requests that race to create the first manager still result in exactly one.
+   - A partial unique index, `uq_agents_primary_manager_per_department`, on
+     `managed_department_id` where `agent_type = 'manager'` and
+     `managed_department_id IS NOT NULL` (created by the model and re-applied
+     idempotently on every startup, so a database created before the index
+     existed gets it too; startup fails with an explicit error if the database
+     file is too old to match the current models).
+   - A savepoint around the manager insert plus a defensive re-select after the
+     resulting integrity error, so requests that race to create the first
+     manager still result in exactly one and the caller's pending work (the
+     worker row, unrelated inserts and updates) still commits.
 5. The worker agent never grants itself permissions; the manager is created by the
    service layer as part of the same request, before any worker action occurs.
 
@@ -212,7 +219,14 @@ Phase 2+ adds tests for:
 - Unknown job types create a generic department and never invent a manager skills profile.
 - Authentication bypass attempts are rejected (401).
 - All state-changing endpoints require owner authentication.
-- Concurrent manager creation prevents duplicates.
+- Concurrent manager creation prevents duplicates (two separate `AsyncSession`
+  instances against one file-backed SQLite database).
+- The integrity-error handler is exercised: one racing session loses the insert,
+  recovers, and adopts the surviving manager.
+- Unrelated pending changes survive that recovery and are committed.
+- Unrelated integrity errors (e.g. NOT NULL) are re-raised, never mistaken for a
+  duplicate manager.
+- The database itself rejects a second primary manager for a department.
 - All autonomy levels are valid enum values.
 - Audit events record actor identity.
 - Tasks remain in 'assigned' status until executor starts work.

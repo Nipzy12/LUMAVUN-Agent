@@ -1,7 +1,7 @@
 import enum
 import json
 
-from sqlalchemy import String, ForeignKey, Text
+from sqlalchemy import Index, String, ForeignKey, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from luma_core.db.session import Base
@@ -26,8 +26,26 @@ class AgentType(str, enum.Enum):
     manager = "manager"
 
 
+PRIMARY_MANAGER_INDEX = "uq_agents_primary_manager_per_department"
+
+
 class Agent(Base):
     __tablename__ = "agents"
+    __table_args__ = (
+        # Business rule: a department has at most one primary manager. The
+        # index is partial so worker rows and managers that do not own a
+        # department are unaffected. SQLite reports violations of this index as
+        # "UNIQUE constraint failed: agents.managed_department_id"; the service
+        # layer matches on that exact shape (see AgentService).
+        Index(
+            PRIMARY_MANAGER_INDEX,
+            "managed_department_id",
+            unique=True,
+            sqlite_where=text(
+                "agent_type = 'manager' AND managed_department_id IS NOT NULL"
+            ),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     department_id: Mapped[int | None] = mapped_column(

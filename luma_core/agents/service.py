@@ -12,6 +12,7 @@ from luma_core.models import (
     Department,
     DepartmentStatus,
 )
+from luma_core.models.agent import PRIMARY_MANAGER_INDEX
 from luma_core.agents.job_type_registry import JobTypeRegistry
 
 
@@ -30,6 +31,9 @@ class AgentService:
 
     DEFAULT_AUTONOMY = AutonomyLevel.supervised
     DEFAULT_MANAGER_STATUS = AgentStatus.active
+
+    #: Partial unique index that enforces "one primary manager per department".
+    DUPLICATE_MANAGER_CONSTRAINT = PRIMARY_MANAGER_INDEX
 
     def __init__(
         self,
@@ -76,16 +80,22 @@ class AgentService:
         await session.flush()
         return department
 
-    async def primary_manager_exists(
+    async def primary_manager(
         self, session: AsyncSession, department_id: int
-    ) -> bool:
-        stmt = select(Agent.id).where(
+    ) -> Agent | None:
+        """Return the department's primary manager, if one exists."""
+        stmt = select(Agent).where(
             Agent.department_id == department_id,
             Agent.agent_type == AgentType.manager,
             Agent.managed_department_id == department_id,
         )
         result = await session.execute(stmt)
-        return result.scalar_one_or_none() is not None
+        return result.scalars().first()
+
+    async def primary_manager_exists(
+        self, session: AsyncSession, department_id: int
+    ) -> bool:
+        return await self.primary_manager(session, department_id) is not None
 
     async def create_primary_manager(
         self,
@@ -94,16 +104,10 @@ class AgentService:
         role: str,
         skills: Iterable[str] | None = None,
     ) -> Agent:
-        # First check if a primary manager already exists.
-        if await self.primary_manager_exists(session, department.id):
-            stmt = select(Agent).where(
-                Agent.department_id == department.id,
-                Agent.agent_type == AgentType.manager,
-                Agent.managed_department_id == department.id,
-            )
-            result = await session.execute(stmt)
-            manager = result.scalar_one()
-            return manager
+        # Fast path: a primary manager is already there (the common case).
+        existing = await self.primary_manager(session, department.id)
+        if existing is not None:
+            return existing
 
         self._ensure_required_columns()
 
@@ -123,58 +127,63 @@ class AgentService:
             updated_at=now,
         )
         manager.set_skills(list(skills) if skills else [])
-        session.add(manager)
 
-        # Use a savepoint so that manager creation conflicts don't
-        # rollback the entire transaction (e.g., worker insert).
+        # A savepoint keeps a losing manager insert from discarding the caller's
+        # transaction (the worker row, plus anything else already pending).
+        #
+        # The new row must be added *inside* the savepoint: SQLAlchemy can only
+        # restore a clean session state when the failing flush belongs entirely
+        # to the nested transaction. Adding the object before begin_nested()
+        # leaves the whole Session in PendingRollbackError and forces a full
+        # Session.rollback(), which is exactly what this method must avoid.
         try:
-            async with session.begin_nested() as savepoint:
+            async with session.begin_nested():
+                session.add(manager)
                 await session.flush()
                 await session.refresh(manager)
                 return manager
         except IntegrityError as exc:
-            # Rollback the savepoint (done automatically by the context manager),
-            # then inspect the error to determine whether this was a duplicate-manager
-            # constraint violation or some other integrity problem.
-            await session.rollback()  # rollback the savepoint context
-            if not self._is_duplicate_manager_error(exc, department.id):
+            # begin_nested() already rolled the savepoint back, so the outer
+            # transaction - and every unrelated pending change in it - is
+            # still intact and can still be committed.
+            if not self._is_duplicate_manager_error(exc):
                 raise
 
-            # A concurrent request inserted the primary manager first.
-            # Query for the survivor without disturbing the outer transaction.
-            stmt = select(Agent).where(
-                Agent.department_id == department.id,
-                Agent.agent_type == AgentType.manager,
-                Agent.managed_department_id == department.id,
-            )
-            result = await session.execute(stmt)
-            survivor = result.scalar_one()
-            await session.refresh(survivor)
+            # A concurrent transaction committed the primary manager first.
+            # Adopt the surviving row instead of failing the request.
+            survivor = await self.primary_manager(session, department.id)
+            if survivor is None:
+                raise
             return survivor
 
-    def _is_duplicate_manager_error(
-        self, exc: IntegrityError, department_id: int
-    ) -> bool:
-        """Return True when *exc* is a duplicate primary-manager violation.
+    def _is_duplicate_manager_error(self, exc: IntegrityError) -> bool:
+        """Return True only for a duplicate primary-manager violation.
 
-        SQLite may report the conflict against different constraint names or column
-        combinations depending on schema version, so we check both the constraint
-        name and the affected columns.
+        Every other integrity failure (NOT NULL, foreign key, an unrelated
+        unique index) must be re-raised so callers see the real problem instead
+        of silently adopting a manager that has nothing to do with the error.
         """
-        orig = exc.orig if hasattr(exc, "orig") else None
+        orig = getattr(exc, "orig", None)
         if orig is None:
             return False
 
-        # SQLite uniqueness errors mention the constraint or the columns.
-        msg = getattr(orig, "args", [""])[0] if isinstance(getattr(orig, "args", None), tuple) else str(orig)
-        if isinstance(msg, str):
-            lowered = msg.lower()
-            if "unique" in lowered or "constraint" in lowered:
-                return True
+        # psycopg/asyncpg expose the violated constraint name directly.
+        diag = getattr(orig, "diag", None)
+        constraint_name = getattr(diag, "constraint_name", None)
+        if constraint_name:
+            return constraint_name == self.DUPLICATE_MANAGER_CONSTRAINT
 
-        # Fall back: any IntegrityError during manager insert is treated as a
-        # potential duplicate-manager conflict for safety.
-        return True
+        message = str(orig)
+        if self.DUPLICATE_MANAGER_CONSTRAINT in message:
+            return True
+
+        # SQLite names a unique-*index* violation by indexed column rather than
+        # by constraint name: "UNIQUE constraint failed: agents.managed_department_id".
+        lowered = message.lower()
+        return (
+            "unique constraint failed" in lowered
+            and "agents.managed_department_id" in lowered
+        )
 
     def _ensure_required_columns(self) -> None:
         """Compatibility guard for pre-P2 DB snapshots.

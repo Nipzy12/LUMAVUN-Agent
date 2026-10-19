@@ -290,11 +290,13 @@ async def test_audit_events_record_actor_identity(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_manager_creation_prevents_duplicates(client: AsyncClient) -> None:
-    """Multiple concurrent worker creations must result in exactly one manager."""
-    # Create multiple workers in the same department sequentially
-    # (true concurrency is hard to test in async tests, but sequential creates
-    # should still result in only one manager)
+async def test_many_workers_in_one_department_keep_one_manager(client: AsyncClient) -> None:
+    """Repeated worker creation leaves exactly one primary manager.
+
+    These creations are sequential, so this covers the service's fast-path
+    lookup. Genuine concurrent sessions are covered in
+    ``tests/test_manager_transactions.py``.
+    """
     workers = []
     for i in range(5):
         worker = await client.post(
@@ -403,17 +405,50 @@ async def test_unauthenticated_write_endpoints_rejected(client: AsyncClient) -> 
 
 @pytest.mark.asyncio
 async def test_valid_authenticated_writes_succeed(client: AsyncClient) -> None:
-    """Authenticated requests with valid token should succeed."""
-    # Note: This test requires a valid token. In the test environment,
-    # we can't easily provide one, so we verify that the endpoint exists
-    # and would work with proper auth. The 401 response confirms the
-    # endpoint is protected.
-    pass
+    """Writes carrying the owner token succeed; a wrong token is rejected.
+
+    The ``client`` fixture sends the configured owner token, so these requests
+    are authenticated. The same endpoints must reject a bad token.
+    """
+    created = await client.post(
+        "/api/agents",
+        json={"name": "Authenticated Worker", "job_type": "web developer"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["id"]
+
+    renamed = await client.patch(
+        f"/api/agents/{agent_id}",
+        json={"name": "Authenticated Worker Renamed"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Authenticated Worker Renamed"
+
+    # The change was persisted, not merely echoed back to the caller.
+    fetched = await client.get(f"/api/agents/{agent_id}")
+    assert fetched.status_code == 200
+    assert fetched.json()["name"] == "Authenticated Worker Renamed"
+
+    wrong_token = await client.patch(
+        f"/api/agents/{agent_id}",
+        json={"name": "Rejected Rename"},
+        headers={"X-Luma-Owner-Token": "not-the-owner-token"},
+    )
+    assert wrong_token.status_code == 401
+
+    still_named = await client.get(f"/api/agents/{agent_id}")
+    assert still_named.json()["name"] == "Authenticated Worker Renamed"
 
 
 @pytest.mark.asyncio
-async def test_concurrent_manager_creation_regression(client: AsyncClient) -> None:
-    """Regression test: multiple sequential worker creates result in exactly one manager."""
+async def test_repeated_worker_creation_keeps_one_manager_for_development(
+    client: AsyncClient,
+) -> None:
+    """Repeated worker creation in Development never adds a second manager.
+
+    Sequential, so the service's pre-check handles it; the concurrency and
+    conflict-recovery paths are covered in ``tests/test_manager_transactions.py``.
+    """
     workers = []
     for i in range(10):
         worker = await client.post(
@@ -440,14 +475,14 @@ async def test_concurrent_manager_creation_regression(client: AsyncClient) -> No
 
 
 @pytest.mark.asyncio
-async def test_concurrent_manager_creation_with_savepoint(client: AsyncClient) -> None:
-    """Test that concurrent manager creation uses savepoints properly.
+async def test_sequential_worker_creation_keeps_manager_stable_for_all_workers(
+    client: AsyncClient,
+) -> None:
+    """Every worker created sequentially in Media Studio resolves to one manager.
 
-    This test creates multiple workers in the same department sequentially.
-    The savepoint mechanism ensures that when the first worker creates a manager,
-    subsequent workers don't create duplicate managers even under contention.
+    This is the pre-check path, not the savepoint conflict path; see
+    ``tests/test_manager_transactions.py`` for the latter.
     """
-    # Create workers sequentially (not truly concurrent, but tests the savepoint logic)
     workers = []
     for i in range(5):
         worker = await client.post(
@@ -480,84 +515,89 @@ async def test_concurrent_manager_creation_with_savepoint(client: AsyncClient) -
 
 
 @pytest.mark.asyncio
-async def test_duplicate_manager_savepoint_recovery(client: AsyncClient) -> None:
-    """Regression test: deliberately trigger duplicate-manager constraint and verify recovery.
+async def test_duplicate_manager_constraint_is_enforced_by_the_database(
+    client: AsyncClient,
+) -> None:
+    """The schema itself rejects a second primary manager for a department.
 
-    This test forces the savepoint conflict path by pre-inserting a primary manager
-    for the Media Studio department (the department that 'video editor' job type maps to),
-    then creating a worker which attempts to create another primary manager for the same
-    department. The savepoint should roll back and the survivor lookup should return
-    the pre-inserted manager.
+    The service pre-check alone cannot guarantee this under concurrency, so the
+    database carries a partial unique index. This test verifies that the index
+    exists in the schema the application runs on and that a duplicate insert is
+    actually rejected. Handling the resulting IntegrityError (savepoint rollback
+    plus adopting the survivor) is covered against a file-backed database in
+    ``tests/test_manager_transactions.py``.
     """
-    from sqlalchemy import select
-    from luma_core.models import Agent, AgentType, AgentStatus, AutonomyLevel, Department, DepartmentStatus
+    from sqlalchemy import select, text
+    from sqlalchemy.exc import IntegrityError
 
-    # Get the session factory from the app
+    from luma_core.agents.service import AgentService
     from luma_core.db import session as session_module
+    from luma_core.models import (
+        Agent,
+        AgentStatus,
+        AgentType,
+        AutonomyLevel,
+    )
+    from luma_core.models.agent import PRIMARY_MANAGER_INDEX
+
+    created = await client.post(
+        "/api/agents",
+        json={"name": "Constraint Worker", "job_type": "web developer"},
+    )
+    assert created.status_code == 201, created.text
+    department_id = created.json()["department_id"]
+
     session_factory = session_module.async_session_factory
-
-    async with session_factory() as test_session:
-        # Create the Media Studio department directly in this session (same dept that
-        # 'video editor' job type maps to, so create_worker_with_manager will use it)
-        now = "2024-01-01T00:00:00+00:00"
-        dept = Department(
-            name="Media Studio",
-            status=DepartmentStatus.active,
-            created_at=now,
-            updated_at=now,
+    async with session_factory() as session:
+        index_names = (
+            await session.execute(
+                text("SELECT name FROM sqlite_master WHERE type='index' AND name = :name"),
+                {"name": PRIMARY_MANAGER_INDEX},
+            )
+        ).scalars().all()
+        assert index_names == [PRIMARY_MANAGER_INDEX], (
+            "the partial unique index must exist in the application schema"
         )
-        test_session.add(dept)
-        await test_session.flush()
-        dept_id = dept.id
 
-        # Insert a primary manager directly (simulating a concurrent insert)
-        pre_existing_manager = Agent(
-            name="Pre-existing Manager (Primary)",
-            role="Media Manager",
-            description="Pre-existing primary manager for Media Studio.",
+        manager = (
+            await session.execute(
+                select(Agent).where(
+                    Agent.agent_type == AgentType.manager,
+                    Agent.managed_department_id == department_id,
+                )
+            )
+        ).scalars().first()
+        assert manager is not None, "creating a worker must create its manager"
+
+        now = "2024-01-01T00:00:00+00:00"
+        duplicate = Agent(
+            name="Illegal Second Manager",
+            role="Dev Manager",
             autonomy_level=AutonomyLevel.supervised,
             status=AgentStatus.active,
             agent_type=AgentType.manager,
-            department_id=dept_id,
-            managed_department_id=dept_id,
+            department_id=department_id,
+            managed_department_id=department_id,
             created_at=now,
             updated_at=now,
         )
-        pre_existing_manager.set_skills([])
-        test_session.add(pre_existing_manager)
-        await test_session.flush()
-        manager_id = pre_existing_manager.id
+        duplicate.set_skills([])
 
-        # Now verify the service layer can recover from the duplicate constraint
-        # when create_worker_with_manager tries to create another primary manager
-        from luma_core.agents.service import AgentService
-        service = AgentService()
+        with pytest.raises(IntegrityError) as excinfo:
+            async with session.begin_nested():
+                session.add(duplicate)
+                await session.flush()
 
-        # This should succeed without error, returning the pre-existing manager
-        worker, manager = await service.create_worker_with_manager(
-            session=test_session,
-            name="Conflict Test Worker",
-            job_type="video editor",
-            skills=["editing"],
-        )
+        assert "agents.managed_department_id" in str(excinfo.value.orig).lower()
+        assert AgentService()._is_duplicate_manager_error(excinfo.value) is True
+        await session.rollback()
 
-        # Verify we got the pre-existing manager back, not a new one
-        assert manager.id == manager_id, (
-            f"Expected manager id {manager_id}, got {manager.id}"
-        )
-        assert worker.department_id == dept_id
-
-        # Verify only one manager exists in the database
-        stmt = select(Agent).where(
-            Agent.department_id == dept_id,
-            Agent.agent_type == AgentType.manager,
-            Agent.managed_department_id == dept_id,
-        )
-        result = await test_session.execute(stmt)
-        managers = list(result.scalars().all())
-        assert len(managers) == 1, f"Expected 1 manager, found {len(managers)}"
-
-        await test_session.commit()
+    # The rejected insert changed nothing.
+    managers = await client.get("/api/agents?manager_only=true")
+    dev_managers = [
+        m for m in managers.json()["items"] if m["department_name"] == "Development"
+    ]
+    assert len(dev_managers) == 1
 
 
 @pytest.mark.asyncio
