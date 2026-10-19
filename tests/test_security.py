@@ -480,6 +480,87 @@ async def test_concurrent_manager_creation_with_savepoint(client: AsyncClient) -
 
 
 @pytest.mark.asyncio
+async def test_duplicate_manager_savepoint_recovery(client: AsyncClient) -> None:
+    """Regression test: deliberately trigger duplicate-manager constraint and verify recovery.
+
+    This test forces the savepoint conflict path by pre-inserting a primary manager
+    for the Media Studio department (the department that 'video editor' job type maps to),
+    then creating a worker which attempts to create another primary manager for the same
+    department. The savepoint should roll back and the survivor lookup should return
+    the pre-inserted manager.
+    """
+    from sqlalchemy import select
+    from luma_core.models import Agent, AgentType, AgentStatus, AutonomyLevel, Department, DepartmentStatus
+
+    # Get the session factory from the app
+    from luma_core.db import session as session_module
+    session_factory = session_module.async_session_factory
+
+    async with session_factory() as test_session:
+        # Create the Media Studio department directly in this session (same dept that
+        # 'video editor' job type maps to, so create_worker_with_manager will use it)
+        now = "2024-01-01T00:00:00+00:00"
+        dept = Department(
+            name="Media Studio",
+            status=DepartmentStatus.active,
+            created_at=now,
+            updated_at=now,
+        )
+        test_session.add(dept)
+        await test_session.flush()
+        dept_id = dept.id
+
+        # Insert a primary manager directly (simulating a concurrent insert)
+        pre_existing_manager = Agent(
+            name="Pre-existing Manager (Primary)",
+            role="Media Manager",
+            description="Pre-existing primary manager for Media Studio.",
+            autonomy_level=AutonomyLevel.supervised,
+            status=AgentStatus.active,
+            agent_type=AgentType.manager,
+            department_id=dept_id,
+            managed_department_id=dept_id,
+            created_at=now,
+            updated_at=now,
+        )
+        pre_existing_manager.set_skills([])
+        test_session.add(pre_existing_manager)
+        await test_session.flush()
+        manager_id = pre_existing_manager.id
+
+        # Now verify the service layer can recover from the duplicate constraint
+        # when create_worker_with_manager tries to create another primary manager
+        from luma_core.agents.service import AgentService
+        service = AgentService()
+
+        # This should succeed without error, returning the pre-existing manager
+        worker, manager = await service.create_worker_with_manager(
+            session=test_session,
+            name="Conflict Test Worker",
+            job_type="video editor",
+            skills=["editing"],
+        )
+
+        # Verify we got the pre-existing manager back, not a new one
+        assert manager.id == manager_id, (
+            f"Expected manager id {manager_id}, got {manager.id}"
+        )
+        assert worker.department_id == dept_id
+
+        # Verify only one manager exists in the database
+        stmt = select(Agent).where(
+            Agent.department_id == dept_id,
+            Agent.agent_type == AgentType.manager,
+            Agent.managed_department_id == dept_id,
+        )
+        result = await test_session.execute(stmt)
+        managers = list(result.scalars().all())
+        assert len(managers) == 1, f"Expected 1 manager, found {len(managers)}"
+
+        await test_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_task_stays_assigned_until_executor_starts(client: AsyncClient) -> None:
     """Verify tasks remain in 'assigned' status after routing, not auto-transitioned to in_progress."""
     worker = await client.post(

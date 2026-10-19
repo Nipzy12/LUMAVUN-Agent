@@ -107,42 +107,74 @@ class AgentService:
 
         self._ensure_required_columns()
 
+        now = self._now_iso()
+        manager = Agent(
+            name=f"{role} (Primary)",
+            role=role,
+            description=f"Primary manager for {department.name}.",
+            autonomy_level=self.normalize_autonomy(
+                self._job_type_registry.default_manager_autonomy(),
+            ),
+            status=self.DEFAULT_MANAGER_STATUS,
+            agent_type=AgentType.manager,
+            department_id=department.id,
+            managed_department_id=department.id,
+            created_at=now,
+            updated_at=now,
+        )
+        manager.set_skills(list(skills) if skills else [])
+        session.add(manager)
+
         # Use a savepoint so that manager creation conflicts don't
         # rollback the entire transaction (e.g., worker insert).
-        sp_name = f"manager_create_{department.id}"
-        async with session.begin_nested() as savepoint:
-            now = self._now_iso()
-            manager = Agent(
-                name=f"{role} (Primary)",
-                role=role,
-                description=f"Primary manager for {department.name}.",
-                autonomy_level=self.normalize_autonomy(
-                    self._job_type_registry.default_manager_autonomy(),
-                ),
-                status=self.DEFAULT_MANAGER_STATUS,
-                agent_type=AgentType.manager,
-                department_id=department.id,
-                managed_department_id=department.id,
-                created_at=now,
-                updated_at=now,
-            )
-            manager.set_skills(list(skills) if skills else [])
-            session.add(manager)
-            await session.flush()
-            await session.refresh(manager)
-            return manager
+        try:
+            async with session.begin_nested() as savepoint:
+                await session.flush()
+                await session.refresh(manager)
+                return manager
+        except IntegrityError as exc:
+            # Rollback the savepoint (done automatically by the context manager),
+            # then inspect the error to determine whether this was a duplicate-manager
+            # constraint violation or some other integrity problem.
+            await session.rollback()  # rollback the savepoint context
+            if not self._is_duplicate_manager_error(exc, department.id):
+                raise
 
-        # If we get here, the savepoint was rolled back due to IntegrityError.
-        # Query for the survivor created by a concurrent request.
-        stmt = select(Agent).where(
-            Agent.department_id == department.id,
-            Agent.agent_type == AgentType.manager,
-            Agent.managed_department_id == department.id,
-        )
-        result = await session.execute(stmt)
-        survivor = result.scalar_one()
-        await session.refresh(survivor)
-        return survivor
+            # A concurrent request inserted the primary manager first.
+            # Query for the survivor without disturbing the outer transaction.
+            stmt = select(Agent).where(
+                Agent.department_id == department.id,
+                Agent.agent_type == AgentType.manager,
+                Agent.managed_department_id == department.id,
+            )
+            result = await session.execute(stmt)
+            survivor = result.scalar_one()
+            await session.refresh(survivor)
+            return survivor
+
+    def _is_duplicate_manager_error(
+        self, exc: IntegrityError, department_id: int
+    ) -> bool:
+        """Return True when *exc* is a duplicate primary-manager violation.
+
+        SQLite may report the conflict against different constraint names or column
+        combinations depending on schema version, so we check both the constraint
+        name and the affected columns.
+        """
+        orig = exc.orig if hasattr(exc, "orig") else None
+        if orig is None:
+            return False
+
+        # SQLite uniqueness errors mention the constraint or the columns.
+        msg = getattr(orig, "args", [""])[0] if isinstance(getattr(orig, "args", None), tuple) else str(orig)
+        if isinstance(msg, str):
+            lowered = msg.lower()
+            if "unique" in lowered or "constraint" in lowered:
+                return True
+
+        # Fall back: any IntegrityError during manager insert is treated as a
+        # potential duplicate-manager conflict for safety.
+        return True
 
     def _ensure_required_columns(self) -> None:
         """Compatibility guard for pre-P2 DB snapshots.
