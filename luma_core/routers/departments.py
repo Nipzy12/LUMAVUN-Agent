@@ -1,10 +1,11 @@
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from luma_core.auth import get_owner_token
 from luma_core.db.session import get_db
 from luma_core.models import Department, DepartmentStatus
 from luma_core.schemas import DepartmentCreate, DepartmentResponse, DepartmentUpdate
@@ -35,11 +36,35 @@ class DepartmentCreate(BaseModel):
     description: str | None = None
     status: str = "active"
 
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        try:
+            DepartmentStatus(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status {value!r}. Allowed: {', '.join(e.value for e in DepartmentStatus)}"
+            ) from None
+        return value
+
 
 class DepartmentUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            DepartmentStatus(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status {value!r}. Allowed: {', '.join(e.value for e in DepartmentStatus)}"
+            ) from None
+        return value
 
 
 class _DepartmentResponse(BaseModel):
@@ -76,6 +101,7 @@ async def list_departments(
 async def create_department(
     payload: DepartmentCreate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     department_status: DepartmentStatus
     try:
@@ -113,6 +139,7 @@ async def update_department(
     department_id: int,
     payload: DepartmentUpdate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     department = await session.get(Department, department_id)
     if department is None:
@@ -123,10 +150,7 @@ async def update_department(
     if payload.description is not None:
         department.description = payload.description
     if payload.status is not None:
-        try:
-            department.status = DepartmentStatus(payload.status)
-        except ValueError:
-            pass
+        department.status = DepartmentStatus(payload.status)
     department.updated_at = _now_iso()
 
     await session.flush()
@@ -138,6 +162,7 @@ async def update_department(
 async def delete_department(
     department_id: int,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> None:
     department = await session.get(Department, department_id)
     if department is None:

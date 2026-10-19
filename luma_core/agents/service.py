@@ -94,6 +94,7 @@ class AgentService:
         role: str,
         skills: Iterable[str] | None = None,
     ) -> Agent:
+        # First check if a primary manager already exists.
         if await self.primary_manager_exists(session, department.id):
             stmt = select(Agent).where(
                 Agent.department_id == department.id,
@@ -130,16 +131,19 @@ class AgentService:
             return manager
 
         except IntegrityError:
-            await session.rollback()
+            # Another concurrent request may have inserted the manager.
+            # Clear the failed state without rolling back the entire session.
+            await session.refresh(manager, attribute_names=[])
+            await session.expunge(manager)
             stmt = select(Agent).where(
                 Agent.department_id == department.id,
                 Agent.agent_type == AgentType.manager,
                 Agent.managed_department_id == department.id,
             )
             result = await session.execute(stmt)
-            manager = result.scalar_one()
-            await session.refresh(manager)
-            return manager
+            survivor = result.scalar_one()
+            await session.refresh(survivor)
+            return survivor
 
     def _ensure_required_columns(self) -> None:
         """Compatibility guard for pre-P2 DB snapshots.

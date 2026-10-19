@@ -8,19 +8,22 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import StaticPool
+from unittest.mock import patch
 
 from luma_core.app import app
 from luma_core.db.session import Base
+from luma_core.config import Settings
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+TEST_OWNER_TOKEN = "test-owner-token-12345"
 
 
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Create an async test client bound to a fresh in-memory database.
 
-    The app's ``get_db`` dependency is overridden for the duration of the test
-    so every test runs against its own database.
+    The app's ``get_db`` dependency is overridden and settings are patched
+    to provide a known owner token for the duration of the test.
     """
     engine = create_async_engine(
         TEST_DATABASE_URL,
@@ -52,14 +55,22 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
                 await s.rollback()
                 raise
 
+    # Create test settings with known token
+    test_settings = Settings(local_owner_token=TEST_OWNER_TOKEN)
+
     app.dependency_overrides.clear()
     app.dependency_overrides[
         __import__("luma_core.db.session", fromlist=["get_db"]).get_db
     ] = override_get_db
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    # Patch get_settings in both config and auth modules
+    with patch("luma_core.auth.get_settings", return_value=test_settings):
+        with patch("luma_core.config.get_settings", return_value=test_settings):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                # Add the owner token header to all requests by default
+                ac.headers.update({"X-Luma-Owner-Token": TEST_OWNER_TOKEN})
+                yield ac
 
     app.dependency_overrides.clear()
     session_module.async_session_factory = original

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.agents.registry import get_agent_service
+from luma_core.auth import get_owner_token
 from luma_core.db.session import get_db
 from luma_core.models import (
     Agent,
@@ -154,6 +155,7 @@ async def list_agents(
 async def create_agent(
     payload: AgentCreate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     service = get_agent_service()
 
@@ -188,6 +190,7 @@ async def update_agent(
     agent_id: int,
     payload: AgentUpdate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     stmt = select(Agent).where(Agent.id == agent_id)
     result = await session.execute(stmt)

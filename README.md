@@ -157,11 +157,16 @@ Invalid transitions (e.g. `pending` → `completed`) return HTTP 422.
 - The self-hosted MVP uses a single shared secret: `LOCAL_OWNER_TOKEN`.
 - Endpoints that require owner privileges validate the `X-Luma-Owner-Token` header.
 - **Protected endpoints** (require owner token):
+  - `POST /api/agents` — create agent
+  - `PATCH /api/agents/{id}` — update agent
+  - `POST /api/departments` — create department
+  - `PATCH /api/departments/{id}` — update department
+  - `DELETE /api/departments/{id}` — delete department
   - `POST /api/approval-requests` — create approval request
   - `POST /api/approval-requests/{id}/approve` — approve request
   - `POST /api/approval-requests/{id}/deny` — deny request
 - **Public endpoints** (no token required):
-  - Health, list endpoints, agent creation, task creation, department CRUD
+  - Health, list endpoints, get endpoints (read-only)
 - Unauthenticated requests are never labeled as "local-owner" in audit logs.
 - This is intentionally minimal and is **not** a multi-user SSO solution.
 
@@ -202,9 +207,11 @@ Phase 2+ adds tests for:
 - Owner-only approval and denial require the `X-Luma-Owner-Token` header.
 - Unknown job types create a generic department and never invent a manager skills profile.
 - Authentication bypass attempts are rejected (401).
+- All state-changing endpoints require owner authentication.
 - Concurrent manager creation prevents duplicates.
 - All autonomy levels are valid enum values.
 - Audit events record actor identity.
+- Tasks remain in 'assigned' status until executor starts work.
 
 ```powershell
 pytest
