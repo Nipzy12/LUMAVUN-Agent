@@ -8,6 +8,7 @@ from luma_core.db.session import Base
 
 
 class AutonomyLevel(str, enum.Enum):
+    manual = "manual"
     supervised = "supervised"
     assisted = "assisted"
     autonomous = "autonomous"

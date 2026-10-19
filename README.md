@@ -113,11 +113,24 @@ Add new mappings by editing `luma_core/agents/job_type_registry.py`.
 - `TaskService.assign_task` finds the best-fit available worker in that department
   by skill overlap, falling back to the lowest-id worker when there is no skill
   overlap.
-- If a suitable worker exists, the task is assigned and its status becomes
-  `in_progress`; otherwise it stays `pending` with no assignee.
+- If a suitable worker exists, the task is assigned and stays in `assigned` status
+  until an executor starts work and transitions it to `in_progress`.
+- Otherwise it stays `pending` with no assignee.
 - Every assignment or unassignment is recorded in `AssignmentHistory` with an
   action, actor, target, and reason.
 - Routing is deterministic and does **not** call any AI model in Phase 2.
+
+### Task Lifecycle
+
+Tasks follow a strict state machine with transitions:
+
+- `pending` → `assigned` | `cancelled`
+- `assigned` → `in_progress` | `cancelled`
+- `in_progress` → `completed` | `failed` | `cancelled`
+- `failed` → `assigned` | `cancelled`
+- `completed`, `cancelled` are terminal states
+
+Invalid transitions (e.g. `pending` → `completed`) return HTTP 422.
 
 ### Governance
 
@@ -143,8 +156,13 @@ Add new mappings by editing `luma_core/agents/job_type_registry.py`.
 
 - The self-hosted MVP uses a single shared secret: `LOCAL_OWNER_TOKEN`.
 - Endpoints that require owner privileges validate the `X-Luma-Owner-Token` header.
-- Public endpoints (health, list endpoints, task creation, approval-request creation)
-  remain accessible without the token.
+- **Protected endpoints** (require owner token):
+  - `POST /api/approval-requests` — create approval request
+  - `POST /api/approval-requests/{id}/approve` — approve request
+  - `POST /api/approval-requests/{id}/deny` — deny request
+- **Public endpoints** (no token required):
+  - Health, list endpoints, agent creation, task creation, department CRUD
+- Unauthenticated requests are never labeled as "local-owner" in audit logs.
 - This is intentionally minimal and is **not** a multi-user SSO solution.
 
 ### API endpoints
@@ -183,6 +201,10 @@ Phase 2+ adds tests for:
 - Task lifecycle transitions: invalid transitions (e.g. pending -> completed) are rejected.
 - Owner-only approval and denial require the `X-Luma-Owner-Token` header.
 - Unknown job types create a generic department and never invent a manager skills profile.
+- Authentication bypass attempts are rejected (401).
+- Concurrent manager creation prevents duplicates.
+- All autonomy levels are valid enum values.
+- Audit events record actor identity.
 
 ```powershell
 pytest

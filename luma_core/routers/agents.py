@@ -200,15 +200,9 @@ async def update_agent(
     if payload.description is not None:
         agent.description = payload.description
     if payload.status is not None:
-        try:
-            agent.status = AgentStatus(payload.status)
-        except ValueError:
-            pass
+        agent.status = AgentStatus(payload.status)
     if payload.autonomy_level is not None:
-        try:
-            agent.autonomy_level = AutonomyLevel(payload.autonomy_level)
-        except ValueError:
-            pass
+        agent.autonomy_level = AutonomyLevel(payload.autonomy_level)
     if payload.skills is not None:
         agent.set_skills(payload.skills)
 

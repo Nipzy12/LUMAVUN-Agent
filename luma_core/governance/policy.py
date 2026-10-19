@@ -60,7 +60,7 @@ class GovernancePolicy:
     # Lower tiers are more restricted.
     autonomy_allowed_actions: dict[AutonomyLevel, frozenset[str]] = field(
         default_factory=lambda: {
-            AutonomyLevel.supervised: frozenset(),
+            AutonomyLevel.manual: frozenset(),
             AutonomyLevel.supervised: frozenset({
                 "view_department",
                 "list_agents",

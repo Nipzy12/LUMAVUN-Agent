@@ -105,8 +105,13 @@ class ApprovalDecision(BaseModel):
 async def create_approval_request(
     payload: ApprovalRequestCreate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
-    """Create an approval request for a sensitive action."""
+    """Create an approval request for a sensitive action.
+
+    Requires owner authentication. The authenticated owner identity is recorded
+    in the audit log, never a hardcoded label for unauthenticated requests.
+    """
     now = _now_iso()
     req = ApprovalRequest(
         action=payload.action,

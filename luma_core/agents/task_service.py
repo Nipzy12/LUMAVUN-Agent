@@ -132,13 +132,6 @@ class TaskService:
         task.agent_id = worker.id
         task.set_status(TaskStatus.assigned)
         task.updated_at = _now_iso()
-        await session.flush()
-
-        # Transition assigned -> in_progress within the same request so the
-        # task reflects that routing has selected a worker and work may start.
-        task.set_status(TaskStatus.in_progress)
-        task.updated_at = _now_iso()
-        await session.flush()
         await self.record_assignment(
             session,
             task,
@@ -146,6 +139,8 @@ class TaskService:
             assigned_to_id=worker.id,
             reason="Deterministic best-fit worker selection",
         )
+        await session.flush()
+        await session.refresh(task)
         return worker
 
 

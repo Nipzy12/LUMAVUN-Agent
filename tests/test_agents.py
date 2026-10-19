@@ -96,7 +96,7 @@ async def test_create_task_routes_to_department_and_assigns_worker(client: Async
     )
     assert task.status_code == 201
     task_payload = task.json()
-    assert task_payload["status"] == "in_progress"
+    assert task_payload["status"] == "assigned"
     assert task_payload["assignee_name"] == "Routing Worker"
     assert task_payload["department_id"] is not None
 
