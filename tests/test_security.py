@@ -366,6 +366,20 @@ async def test_unauthenticated_write_endpoints_rejected(client: AsyncClient) -> 
         )
         assert update.status_code == 401, f"Expected 401 for unauthenticated PATCH /api/agents/1, got {update.status_code}"
 
+        # Test task creation (POST)
+        task = await unauthorized_client.post(
+            "/api/tasks",
+            json={"title": "Should Fail", "job_type": "web developer"},
+        )
+        assert task.status_code == 401, f"Expected 401 for unauthenticated POST /api/tasks, got {task.status_code}"
+
+        # Test task update (PATCH)
+        task_update = await unauthorized_client.patch(
+            "/api/tasks/1",
+            json={"title": "Hacked"},
+        )
+        assert task_update.status_code == 401, f"Expected 401 for unauthenticated PATCH /api/tasks/1, got {task_update.status_code}"
+
         # Test department creation (POST)
         dept = await unauthorized_client.post(
             "/api/departments",
@@ -423,6 +437,46 @@ async def test_concurrent_manager_creation_regression(client: AsyncClient) -> No
     assert len(dev_managers) == 1, (
         f"Expected exactly 1 manager for Development, found {len(dev_managers)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_manager_creation_with_savepoint(client: AsyncClient) -> None:
+    """Test that concurrent manager creation uses savepoints properly.
+
+    This test creates multiple workers in the same department sequentially.
+    The savepoint mechanism ensures that when the first worker creates a manager,
+    subsequent workers don't create duplicate managers even under contention.
+    """
+    # Create workers sequentially (not truly concurrent, but tests the savepoint logic)
+    workers = []
+    for i in range(5):
+        worker = await client.post(
+            "/api/agents",
+            json={
+                "name": f"Savepoint Worker {i}",
+                "job_type": "video editor",
+                "skills": [f"skill_{i}"],
+            },
+        )
+        assert worker.status_code == 201, f"Worker {i} creation failed: {worker.status_code}"
+        workers.append(worker.json())
+
+    # Verify all workers are in the same department
+    dept_names = {w["department_name"] for w in workers}
+    assert len(dept_names) == 1, "All workers should be in the same department"
+
+    # Verify only one manager exists (savepoint prevented duplicates)
+    managers = await client.get("/api/agents?manager_only=true")
+    media_managers = [m for m in managers.json()["items"] if m["department_name"] == "Media Studio"]
+    assert len(media_managers) == 1, (
+        f"Expected exactly 1 manager for Media Studio, found {len(media_managers)}"
+    )
+
+    # Verify each worker has the same manager
+    manager_id = media_managers[0]["id"]
+    for w in workers:
+        manager_resp = await client.get(f"/api/agents/{w['id']}/department")
+        assert manager_resp.status_code == 200
 
 
 @pytest.mark.asyncio

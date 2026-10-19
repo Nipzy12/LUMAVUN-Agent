@@ -159,6 +159,8 @@ Invalid transitions (e.g. `pending` → `completed`) return HTTP 422.
 - **Protected endpoints** (require owner token):
   - `POST /api/agents` — create agent
   - `PATCH /api/agents/{id}` — update agent
+  - `POST /api/tasks` — create task (triggers routing)
+  - `PATCH /api/tasks/{id}` — update task
   - `POST /api/departments` — create department
   - `PATCH /api/departments/{id}` — update department
   - `DELETE /api/departments/{id}` — delete department
@@ -168,6 +170,8 @@ Invalid transitions (e.g. `pending` → `completed`) return HTTP 422.
 - **Public endpoints** (no token required):
   - Health, list endpoints, get endpoints (read-only)
 - Unauthenticated requests are never labeled as "local-owner" in audit logs.
+- Concurrent manager creation uses SQLite savepoints to avoid rolling back
+  unrelated changes (e.g., worker inserts) when a uniqueness conflict occurs.
 - This is intentionally minimal and is **not** a multi-user SSO solution.
 
 ### API endpoints

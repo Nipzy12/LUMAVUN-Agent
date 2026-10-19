@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.agents.registry import get_task_service
+from luma_core.auth import get_owner_token
 from luma_core.db.session import get_db
 from luma_core.models import Task, TaskStatus
 
@@ -109,6 +110,7 @@ async def list_tasks(
 async def create_task(
     payload: TaskCreate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     now = _now_iso()
     task = Task(
@@ -150,6 +152,7 @@ async def update_task(
     task_id: int,
     payload: TaskUpdate,
     session: AsyncSession = Depends(get_db),
+    token: str = Depends(get_owner_token),
 ) -> dict:
     stmt = select(Task).where(Task.id == task_id)
     result = await session.execute(stmt)
