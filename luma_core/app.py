@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from luma_core.config import get_settings
 from luma_core.db.migrate import create_tables
 from luma_core.providers.registry import create_registry
-from luma_core.routers import agents, departments, health, tasks
+from luma_core.routers import agents, approval, audit, departments, health, tasks
 
 settings = get_settings()
 provider_registry = create_registry(settings)
@@ -31,6 +31,8 @@ app.include_router(health.router)
 app.include_router(departments.router)
 app.include_router(agents.router)
 app.include_router(tasks.router)
+app.include_router(approval.router)
+app.include_router(audit.router)
 
 
 @app.get("/")

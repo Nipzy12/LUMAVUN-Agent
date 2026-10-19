@@ -43,10 +43,25 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
     session_module.async_session_factory = session_factory
 
+    async def override_get_db():
+        async with session_factory() as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    app.dependency_overrides.clear()
+    app.dependency_overrides[
+        __import__("luma_core.db.session", fromlist=["get_db"]).get_db
+    ] = override_get_db
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
+    app.dependency_overrides.clear()
     session_module.async_session_factory = original
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

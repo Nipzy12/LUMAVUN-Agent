@@ -33,4 +33,12 @@ class Department(Base):
         back_populates="department",
         lazy="selectin",
         cascade="all, delete-orphan",
+        foreign_keys="Agent.department_id",
+    )
+    manager: Mapped["Agent | None"] = relationship(
+        "Agent",
+        back_populates="managed_department",
+        lazy="selectin",
+        uselist=False,
+        foreign_keys="Agent.managed_department_id",
     )

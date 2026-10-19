@@ -1,19 +1,65 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Iterable
+
+from luma_core.models import AuditAction, AuditEvent
 
 
 @dataclass
 class GovernancePolicy:
-    """Future: approval thresholds, audit retention, guardrails.
+    """Phase 2 policy engine.
 
-    Phase 1: no-op placeholder so the layer exists from day one.
+    - Explicit allow/deny decisions per action type.
+    - Execution-boundary permission checks.
+    - Approval request creation for sensitive actions.
+    - Append-only audit events.
     """
 
     require_approval_for_autonomous_actions: bool = True
-    audit_retention_days: int = 90
+    sensitive_action_types: set[str] = field(
+        default_factory=lambda: {"execute_task", "publish_result", "transfer_funds"}
+    )
+    allowed_actions: frozenset[str] = field(
+        default_factory=lambda: frozenset({
+            "view_department",
+            "list_agents",
+            "list_tasks",
+            "create_task",
+            "assign_task",
+            "read_audit_events",
+            "read_approval_requests",
+        })
+    )
 
-    def approve(self, action: str, actor: str) -> bool:
-        # No approval engine in Phase 1.
-        return True
+    def allow(self, action: str, actor: str | None = None) -> bool:
+        return action in self.allowed_actions
 
-    def record_audit(self, action: str, actor: str, outcome: str) -> None:
-        pass
+    def deny(self, action: str, actor: str | None = None) -> bool:
+        return action not in self.allowed_actions
+
+    def requires_approval(self, action: str) -> bool:
+        return action in self.sensitive_action_types
+
+    def record_audit(
+        self,
+        session,
+        action: AuditAction,
+        actor: str | None = None,
+        target_type: str | None = None,
+        target_id: int | None = None,
+        summary: str | None = None,
+        metadata_: dict | None = None,
+    ) -> AuditEvent:
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        event = AuditEvent(
+            occurred_at=now,
+            action=action.value if isinstance(action, AuditAction) else action,
+            actor=actor,
+            target_type=target_type,
+            target_id=target_id,
+            summary=summary,
+            metadata_=metadata_,
+        )
+        session.add(event)
+        return event

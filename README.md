@@ -57,6 +57,103 @@ Copy `.env.example` to `.env`. The only required setting for Phase 1 is
 Never commit `.env` or real API keys. Keys are loaded from environment
 variables only.
 
+## Phase 2 scope — Company Brain Foundation
+
+Phase 2 turns Luma Office into a functioning AI workplace with agent roles, task
+routing, and governance safeguards.
+
+### Agent Registry
+
+- Manager and worker agent types with `AgentType` enum.
+- Each agent belongs to a department and may manage one.
+- Autonomy modes: `Manual`, `Supervised`, `Autonomous` (`AutonomyLevel` enum).
+- Default autonomy is `Supervised`.
+- Skills stored as a JSON array on the agent row; helper methods `get_skills` /
+  `set_skills` handle round-tripping.
+
+### Automatic Department Manager
+
+When a worker is created:
+
+1. The worker's `job_type` is resolved through `JobTypeRegistry` to a department
+   name and a manager role.
+2. The department is created if it does not already exist.
+3. Exactly one primary manager is created for that department if none exists.
+4. Duplicate managers are prevented by a database unique constraint on
+   `(department_id, agent_type, managed_department_id)` and by a defensive
+   re-select after a flush-time integrity error.
+5. The worker agent never grants itself permissions; the manager is created by the
+   service layer as part of the same request, before any worker action occurs.
+
+Example mappings:
+
+- `web developer` / `backend engineer` / `frontend engineer` → **Development** → **Dev Manager**
+- `video editor` / `videographer` → **Media Studio** → **Media Manager**
+- `meme coin researcher` / `trader` → **Trading Lab** → **Trading Manager**
+
+Add new mappings by editing `luma_core/agents/job_type_registry.py`.
+
+### Task Routing
+
+- `POST /api/tasks` creates a task and runs deterministic Phase 2 routing.
+- The task's `job_type` is resolved to a department via `JobTypeRegistry`.
+- `TaskService.assign_task` finds the best-fit available worker in that department
+  by skill overlap, falling back to the lowest-id worker when there is no skill
+  overlap.
+- If a suitable worker exists, the task is assigned and its status becomes
+  `in_progress`; otherwise it stays `pending` with no assignee.
+- Every assignment or unassignment is recorded in `AssignmentHistory` with an
+  action, actor, target, and reason.
+- Routing is deterministic and does **not** call any AI model in Phase 2.
+
+### Governance
+
+- `GovernancePolicy` provides explicit allow/deny decisions.
+- Permission checks are enforced at execution boundaries via
+  `allow_action` / `deny_action` helpers.
+- Sensitive actions create an `ApprovalRequest` record.
+- `AuditEvent` is append-only and captures actor, action, resource, outcome, and
+  metadata.
+- Phase 2 does **not** implement live trading, real transactions, or unrestricted
+  shell execution.
+
+### API endpoints
+
+| Method   | Path                            | Description                              |
+|----------|---------------------------------|------------------------------------------|
+| GET      | `/api/health`                   | Service health                           |
+| GET      | `/api/departments`              | List departments                         |
+| POST     | `/api/departments`              | Create a department                      |
+| GET      | `/api/departments/{id}`         | Get a department                         |
+| PATCH    | `/api/departments/{id}`         | Update a department                      |
+| DELETE   | `/api/departments/{id}`         | Delete a department                      |
+| GET      | `/api/agents`                   | List agents (filterable)                 |
+| POST     | `/api/agents`                   | Create a worker (auto-creates manager)   |
+| GET      | `/api/agents/{id}`              | Get an agent                             |
+| PATCH    | `/api/agents/{id}`              | Update an agent                          |
+| GET      | `/api/agents/{id}/department`   | Get an agent's department                |
+| GET      | `/api/tasks`                    | List tasks (filterable)                  |
+| POST     | `/api/tasks`                    | Create a task (triggers routing)         |
+| GET      | `/api/tasks/{id}`               | Get a task                               |
+| PATCH    | `/api/tasks/{id}`               | Update a task                            |
+| GET      | `/api/approval-requests`        | List approval requests                   |
+| GET      | `/api/audit-events`             | List audit events                        |
+
+### Tests
+
+Phase 2 adds tests for:
+
+- Automatic manager creation when a worker is created.
+- No duplicate managers when a second worker joins the same department.
+- Task routing to the correct department and worker.
+- Tasks without a suitable worker staying unassigned.
+- Permission denial via the policy engine.
+- Default `Supervised` autonomy for new agents.
+
+```powershell
+pytest
+```
+
 ## Phase 1 scope
 
 - FastAPI application
@@ -70,6 +167,12 @@ What Phase 1 does **not** include:
 - Ollama, Docker, or heavy local AI models
 - Real trading or autonomous external actions
 - Frontend
+
+## Phase 3 and beyond (planned, not implemented)
+
+- AI model integration for task assignment suggestions and drafting.
+- Provider backends behind the provider-agnostic interface.
+- Frontend workspace.
 
 ## License
 
