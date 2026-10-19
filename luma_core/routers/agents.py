@@ -1,7 +1,7 @@
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,16 +28,55 @@ class AgentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     job_type: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1024)
-    skills: list[str] | None = None
-    autonomy_level: str | None = None
+    skills: list[str] | None = Field(default=None, max_length=256)
+    autonomy_level: str | None = Field(default=None, max_length=32)
+
+    @field_validator("autonomy_level")
+    @classmethod
+    def validate_autonomy(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            AutonomyLevel(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid autonomy_level {value!r}. Allowed: {', '.join(e.value for e in AutonomyLevel)}"
+            ) from None
+        return value
 
 
 class AgentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1024)
-    status: str | None = None
-    autonomy_level: str | None = None
-    skills: list[str] | None = None
+    status: str | None = Field(default=None, max_length=32)
+    autonomy_level: str | None = Field(default=None, max_length=32)
+    skills: list[str] | None = Field(default=None, max_length=256)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            AgentStatus(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status {value!r}. Allowed: {', '.join(e.value for e in AgentStatus)}"
+            ) from None
+        return value
+
+    @field_validator("autonomy_level")
+    @classmethod
+    def validate_autonomy(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            AutonomyLevel(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid autonomy_level {value!r}. Allowed: {', '.join(e.value for e in AutonomyLevel)}"
+            ) from None
+        return value
 
 
 class _AgentResponse(BaseModel):

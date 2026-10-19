@@ -79,11 +79,24 @@ When a worker is created:
    name and a manager role.
 2. The department is created if it does not already exist.
 3. Exactly one primary manager is created for that department if none exists.
-4. Duplicate managers are prevented by a database unique constraint on
-   `(department_id, agent_type, managed_department_id)` and by a defensive
-   re-select after a flush-time integrity error.
+4. Duplicate managers are prevented by:
+   - A database unique constraint on `(department_id, agent_type, managed_department_id)`.
+   - A defensive re-select after a flush-time integrity error, so concurrent
+     requests that race to create the first manager still result in exactly one.
 5. The worker agent never grants itself permissions; the manager is created by the
    service layer as part of the same request, before any worker action occurs.
+
+#### Unknown job types
+
+For job types not listed in `JobTypeRegistry`:
+
+- A generic department is created using the pattern ``{JobTypeTitle} Team`` (e.g.
+  ``Quantum Flamingo Trainer Team``).
+- A generic manager is created with the role ``{DepartmentName} Manager`` and **no
+  specific skills profile** from the registry. The manager still exists to own the
+  department, but its skills are empty until explicitly configured.
+- This policy ensures unknown job types never silently invent specialized manager
+  capabilities; they get a structural manager only.
 
 Example mappings:
 
@@ -108,14 +121,31 @@ Add new mappings by editing `luma_core/agents/job_type_registry.py`.
 
 ### Governance
 
-- `GovernancePolicy` provides explicit allow/deny decisions.
-- Permission checks are enforced at execution boundaries via
-  `allow_action` / `deny_action` helpers.
-- Sensitive actions create an `ApprovalRequest` record.
+- `GovernancePolicy` uses **default-deny**: only explicitly permitted actions pass.
+- Actor identity is required for mutating and sensitive actions.
+- Autonomy tiers cap what each agent may do without approval:
+  - `manual` — no autonomous actions.
+  - `supervised` — read-only.safe actions.
+  - `assisted` — may create tasks in addition to read-only actions.
+  - `autonomous` — may assign tasks and create tasks, but still cannot perform
+    sensitive actions without approval.
+- Sensitive actions (`execute_task`, `publish_result`, `transfer_funds`, `run_shell`)
+  always require an approval request.
+- `ApprovalRequest` records are owner-actioned: only the local owner may approve or
+  deny a pending request via `POST /api/approval-requests/{id}/approve` or
+  `POST /api/approval-requests/{id}/deny`.
 - `AuditEvent` is append-only and captures actor, action, resource, outcome, and
-  metadata.
+  metadata (serialized as JSON).
 - Phase 2 does **not** implement live trading, real transactions, or unrestricted
   shell execution.
+
+### Authentication (lightweight local-owner)
+
+- The self-hosted MVP uses a single shared secret: `LOCAL_OWNER_TOKEN`.
+- Endpoints that require owner privileges validate the `X-Luma-Owner-Token` header.
+- Public endpoints (health, list endpoints, task creation, approval-request creation)
+  remain accessible without the token.
+- This is intentionally minimal and is **not** a multi-user SSO solution.
 
 ### API endpoints
 
@@ -141,14 +171,18 @@ Add new mappings by editing `luma_core/agents/job_type_registry.py`.
 
 ### Tests
 
-Phase 2 adds tests for:
+Phase 2+ adds tests for:
 
 - Automatic manager creation when a worker is created.
 - No duplicate managers when a second worker joins the same department.
 - Task routing to the correct department and worker.
 - Tasks without a suitable worker staying unassigned.
-- Permission denial via the policy engine.
+- Permission denial via the policy engine (default-deny).
 - Default `Supervised` autonomy for new agents.
+- Strict input validation: invalid autonomy, status, or task state returns HTTP 422.
+- Task lifecycle transitions: invalid transitions (e.g. pending -> completed) are rejected.
+- Owner-only approval and denial require the `X-Luma-Owner-Token` header.
+- Unknown job types create a generic department and never invent a manager skills profile.
 
 ```powershell
 pytest

@@ -165,7 +165,6 @@ class AgentService:
         department = await self.get_department_or_create(session, department_name)
 
         now = self._now_iso()
-        now = self._now_iso()
         worker = Agent(
             name=name,
             role=role or job_type,

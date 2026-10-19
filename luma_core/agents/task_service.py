@@ -130,7 +130,13 @@ class TaskService:
             return None
 
         task.agent_id = worker.id
-        task.status = TaskStatus.in_progress
+        task.set_status(TaskStatus.assigned)
+        task.updated_at = _now_iso()
+        await session.flush()
+
+        # Transition assigned -> in_progress within the same request so the
+        # task reflects that routing has selected a worker and work may start.
+        task.set_status(TaskStatus.in_progress)
         task.updated_at = _now_iso()
         await session.flush()
         await self.record_assignment(

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,10 @@ class Settings(BaseSettings):
     ollama_base_url: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+
+    # Local owner token for the self-hosted MVP owner-authentication flow.
+    # In production this must be overridden via environment variable.
+    local_owner_token: SecretStr | None = None
 
     @property
     def is_debug(self) -> bool:

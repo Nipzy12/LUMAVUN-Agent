@@ -1,7 +1,7 @@
 from typing import Sequence
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,16 +20,29 @@ def _now_iso() -> str:
 
 class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
-    description: str | None = Field(default=None)
+    description: str | None = Field(default=None, max_length=4096)
     job_type: str | None = Field(default=None, max_length=255)
-    priority: int = 0
+    priority: int = Field(default=0, ge=-1000, le=1000)
 
 
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=512)
-    description: str | None = None
-    status: str | None = None
-    priority: int | None = None
+    description: str | None = Field(default=None, max_length=4096)
+    status: str | None = Field(default=None, max_length=32)
+    priority: int | None = Field(default=None, ge=-1000, le=1000)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            TaskStatus(value)
+        except ValueError:
+            raise ValueError(
+                f"Invalid status {value!r}. Allowed: {', '.join(e.value for e in TaskStatus)}"
+            ) from None
+        return value
 
 
 class _TaskResponse(BaseModel):
@@ -142,7 +155,6 @@ async def update_task(
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
     if task is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Task not found")
 
     if payload.title is not None:
@@ -150,10 +162,11 @@ async def update_task(
     if payload.description is not None:
         task.description = payload.description
     if payload.status is not None:
+        new_status = TaskStatus(payload.status)
         try:
-            task.status = TaskStatus(payload.status)
-        except ValueError:
-            pass
+            task.set_status(new_status)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if payload.priority is not None:
         task.priority = payload.priority
     task.updated_at = _now_iso()

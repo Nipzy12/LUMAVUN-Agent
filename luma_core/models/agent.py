@@ -93,17 +93,3 @@ class Agent(Base):
 
     def set_skills(self, skills: list[str]) -> None:
         self.skills = json.dumps([str(s) for s in skills if s])
-
-    def get_skills(self) -> list[str]:
-        if not self.skills:
-            return []
-        try:
-            parsed = json.loads(self.skills)
-        except (json.JSONDecodeError, TypeError):
-            return []
-        if isinstance(parsed, list):
-            return [str(s) for s in parsed if s]
-        return []
-
-    def set_skills(self, skills: list[str]) -> None:
-        self.skills = json.dumps([str(s) for s in skills if s])
