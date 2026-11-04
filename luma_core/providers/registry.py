@@ -1,4 +1,5 @@
 from luma_core.providers.openai import OpenAIProvider
+from luma_core.providers.openrouter import OpenRouterProvider
 
 from luma_core.config import Settings
 from luma_core.providers.base import BaseModelProvider, UnavailableProvider
@@ -15,6 +16,7 @@ class ProviderRegistry:
         self._providers: dict[str, type[BaseModelProvider]] = {
             "unavailable": UnavailableProvider,
             "openai": OpenAIProvider,
+            "openrouter": OpenRouterProvider,
         }
 
     def register(self, name: str, provider_cls: type[BaseModelProvider]) -> None:

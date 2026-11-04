@@ -266,10 +266,10 @@ write project files, browse, invoke tools, or execute generated code. Creating o
 assigning a task never calls AI. Default autonomy remains `supervised`.
 
 `BaseModelProvider.chat` / `ProviderResponse` form the provider-neutral contract;
-`ProviderRegistry` selects the configured adapter. The first adapter uses OpenAI
-Chat Completions via the existing httpx dependency, with bounded output, timeout,
+`ProviderRegistry` selects OpenAI or OpenRouter (OpenAI-compatible Chat Completions)
+via the existing httpx dependency, with bounded output, timeout,
 and no automatic retries. No Docker, Ollama, GPU, or local model is required.
-Only the selected task title and description are sent to OpenAI. Do not include
+Only the selected task title and description are sent to the selected provider. Do not include
 secrets in task text. Real calls require a provider account and may incur costs.
 
 ### Windows 10 CMD
@@ -291,6 +291,30 @@ Keep `.env` private. API keys are masked by settings and never included in task
 errors. `AI_TIMEOUT_SECONDS=60` and `AI_MAX_OUTPUT_TOKENS=1024` are defaults.
 Restart the server after changing settings. Leave `AI_PROVIDER=unavailable` to
 keep AI disabled.
+
+To use **OpenRouter**, set these values in your private `.env` instead:
+
+```dotenv
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=your-private-openrouter-key
+OPENROUTER_MODEL=openai/gpt-4o-mini
+```
+
+Use an OpenRouter model ID available to your account; the model above is the
+configurable default. The adapter posts to
+`https://openrouter.ai/api/v1/chat/completions` and uses `max_tokens` from
+`AI_MAX_OUTPUT_TOKENS`. It sends text messages only, with no tools, streaming,
+automatic retries, or fallback to OpenAI. OpenAI credentials are not used by
+OpenRouter, and OpenRouter credentials are not used by OpenAI. Missing or blank
+OpenRouter keys return controlled HTTP 503 before execution; invalid credentials,
+timeouts, malformed responses, and upstream failures produce a persisted `failed`
+task with a sanitized error. Inspect task status, not just HTTP status.
+
+OpenRouter routes the task text to the chosen model provider. Use nonsensitive
+text for a first trial, check account/model availability and cost, and restart the
+server after editing `.env`. Keep `LOCAL_OWNER_TOKEN` configured: the same
+owner-only, task-specific approval and execute flow below applies to both adapters.
+No database migration or new dependency is required.
 
 For an isolated trial, use a new SQLite filename; no schema change is required:
 

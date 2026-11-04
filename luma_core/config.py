@@ -24,8 +24,10 @@ class Settings(BaseSettings):
     # AI provider keys are optional and never defaulted to real values.
     ollama_base_url: str | None = None
     openai_api_key: SecretStr | None = None
-    ai_provider: Literal["unavailable", "openai"] = "unavailable"
+    ai_provider: Literal["unavailable", "openai", "openrouter"] = "unavailable"
     openai_model: str = "gpt-4o-mini"
+    openrouter_api_key: SecretStr | None = None
+    openrouter_model: str = "openai/gpt-4o-mini"
     ai_timeout_seconds: float = Field(default=60, gt=0, le=300)
     ai_max_output_tokens: int = Field(default=1024, ge=1, le=8192)
     anthropic_api_key: SecretStr | None = None
