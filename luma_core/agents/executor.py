@@ -7,6 +7,7 @@ from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.config import get_settings
+from luma_core.memory.conversations import history_for_task, require_latest_turn, save_assistant_message
 from luma_core.agents.prompts import AgentContext, build_task_prompt
 from luma_core.providers.prompts import redact_secrets
 from luma_core.providers.registry import create_registry
@@ -51,6 +52,7 @@ async def execute_task(session: AsyncSession, task_id: int, approval_id: int,
     if claim.rowcount != 1:
         await session.rollback()
         raise HTTPException(409, 'Task must be assigned to a worker and not already executing')
+    await require_latest_turn(session, task_id)
     policy.record_audit(session, 'task_execution_started', actor='local-owner',
                         target_type='task', target_id=task_id,
                         metadata_={'approval_id': approval_id})
@@ -66,7 +68,8 @@ async def execute_task(session: AsyncSession, task_id: int, approval_id: int,
                 skills=tuple(assigned_agent.get_skills()),
                 department=assigned_agent.department.name if assigned_agent.department else None,
             )
-        prompt = build_task_prompt(task.title, task.description, agent_context)
+        history, truncated = await history_for_task(session, task_id, get_settings())
+        prompt = build_task_prompt(task.title, task.description, agent_context, history, truncated)
         response = await asyncio.wait_for(
             provider.chat(prompt),
             timeout=get_settings().ai_timeout_seconds,
@@ -79,6 +82,8 @@ async def execute_task(session: AsyncSession, task_id: int, approval_id: int,
     finished = await session.execute(update(Task).where(
         Task.id == task_id, Task.status == TaskStatus.in_progress
     ).values(status=status, result=result, error=error, updated_at=now()))
+    if finished.rowcount and status == TaskStatus.completed:
+        await save_assistant_message(session, task_id, result)
     action = f'task_execution_{status.value}' if finished.rowcount else 'task_execution_discarded'
     policy.record_audit(session, action, actor='local-owner',
                         target_type='task', target_id=task_id,

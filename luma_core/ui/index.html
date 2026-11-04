@@ -16,8 +16,8 @@
       <div class="sidebar-caption">RUANG KERJA</div>
       <button class="side-link active" id="sideChat" data-view="chat"><span aria-hidden="true">◫</span> Chat <span class="side-short">01</span></button>
       <button class="side-link" id="sideWork" data-view="work"><span aria-hidden="true">▦</span> Work <span class="side-short">02</span></button>
-      <div class="sidebar-caption history-caption">RIWAYAT TUGAS <button class="tiny-action" id="refreshSide" title="Muat ulang">↻</button></div>
-      <div class="history-list" id="historyList"><div class="muted-small">Memuat tugas…</div></div>
+      <div class="sidebar-caption history-caption">PERCAKAPAN <button class="tiny-action" id="refreshSide" title="Muat ulang">↻</button></div>
+      <div class="history-list" id="historyList"><div class="muted-small">Sambungkan owner untuk melihat percakapan.</div></div>
       <div class="sidebar-foot">
         <div class="backend-pill"><span class="status-dot" id="healthDot"></span><span id="healthLabel">Memeriksa server…</span></div>
         <a href="/docs" target="_blank" rel="noopener noreferrer">API Docs <span aria-hidden="true">↗</span></a>
@@ -39,7 +39,7 @@
           <div class="chat-content" id="chatContent">
             <div class="chat-welcome" id="chatWelcome">
               <div class="welcome-mark" aria-hidden="true">✳</div>
-              <span class="eyebrow">LUMA CHAT · PHASE 3.1</span>
+              <span class="eyebrow">LUMA CHAT · PHASE 3.2</span>
               <h1>Apa yang ingin Luma<br><em>kerjakan hari ini?</em></h1>
               <p>Tulis tugas, tinjau persetujuan, lalu jalankan dengan AI cloud. Semua langkah tetap di bawah kendalimu.</p>
               <div class="suggestions">
@@ -48,14 +48,16 @@
                 <button class="suggest" data-prompt="Jelaskan tahapan membuat halaman login yang aman."><span>✦</span> Rancang halaman login</button>
               </div>
             </div>
+            <div class="conversation-bar" id="conversationBar" hidden><h2 id="conversationTitle"></h2><button type="button" class="mini-btn" id="renameConversationBtn">Ubah nama</button></div>
             <div class="thread" id="chatThread" hidden></div>
           </div>
           <div class="composer-wrap">
             <form class="composer" id="composerForm">
               <label class="sr-only" for="promptInput">Tuliskan tugas</label>
-              <textarea id="promptInput" rows="2" maxlength="4096" placeholder="Tulis tugas untuk Luma Office…" required></textarea>
+              <textarea id="promptInput" rows="2" maxlength="512" autocomplete="off" placeholder="Tulis tugas untuk Luma Office…" required></textarea>
               <div class="composer-bottom"><div class="composer-meta"><span class="sparkle" aria-hidden="true">✧</span><label for="jobTypeSelect">Tim</label><select id="jobTypeSelect" aria-label="Jenis pekerjaan"><option value="web developer">Web Developer</option><option value="backend engineer">Backend Engineer</option><option value="video editor">Video Editor</option><option value="graphic designer">Graphic Designer</option><option value="content writer">Content Writer</option></select><span class="composer-hint">Satu pesan = satu task</span></div><button type="submit" id="sendBtn" class="send-btn" aria-label="Buat tugas">↑</button></div>
             </form>
+            <div class="composer-note" id="composerStatus" role="status"></div>
             <div class="composer-note">AI tidak dijalankan otomatis. Owner harus memberi approval untuk setiap task.</div>
           </div>
         </section>

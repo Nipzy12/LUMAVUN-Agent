@@ -6,7 +6,8 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.agents.registry import get_task_service
-from luma_core.auth import get_owner_token
+from luma_core.auth import get_owner_token, get_owner_identity, optional_owner_identity
+from luma_core.memory.conversations import task_visibility, require_task_access, linked_user_message, require_latest_turn
 from luma_core.db.session import get_db
 from luma_core.models import Task, TaskStatus, AuditEvent
 from luma_core.agents.executor import execute_task, get_execution_provider
@@ -91,8 +92,9 @@ async def list_tasks(
     assignee_id: int | None = None,
     limit: int = Query(default=100, le=500, ge=1),
     session: AsyncSession = Depends(get_db),
+    owner: str | None = Depends(optional_owner_identity),
 ) -> dict:
-    stmt = select(Task)
+    stmt = select(Task).where(task_visibility(Task.id, owner))
     if status is not None:
         stmt = stmt.where(Task.status == status)
     if department_id is not None:
@@ -139,8 +141,9 @@ async def create_task(
 async def get_task(
     task_id: int,
     session: AsyncSession = Depends(get_db),
+    owner: str | None = Depends(optional_owner_identity),
 ) -> dict:
-    stmt = select(Task).where(Task.id == task_id)
+    stmt = select(Task).where(Task.id == task_id, task_visibility(Task.id, owner))
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
     if task is None:
@@ -155,13 +158,23 @@ async def update_task(
     payload: TaskUpdate,
     session: AsyncSession = Depends(get_db),
     token: str = Depends(get_owner_token),
+    owner: str = Depends(get_owner_identity),
 ) -> dict:
+    await require_task_access(session, task_id, owner)
     stmt = select(Task).where(Task.id == task_id)
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    conversation_message = await linked_user_message(session, task_id)
+    if conversation_message is not None:
+        if payload.status in {'in_progress', 'completed'}:
+            raise HTTPException(409, 'Use the approved executor to start or complete conversation tasks')
+        if payload.title is not None or payload.description is not None:
+            raise HTTPException(409, 'Conversation task content is immutable; create a new turn')
+        if payload.status == 'assigned':
+            await require_latest_turn(session, task_id)
     old_status = task.status
     if payload.status is not None:
         new_status = TaskStatus(payload.status)
@@ -198,6 +211,19 @@ async def execute_assigned_task(
     token: str = Depends(get_owner_token),
     session: AsyncSession = Depends(get_db),
     provider: BaseModelProvider = Depends(get_execution_provider),
+    owner: str = Depends(get_owner_identity),
 ) -> dict:
+    await require_task_access(session, task_id, owner)
     task = await execute_task(session, task_id, payload.approval_id, provider)
     return _serialize_task(task)
+
+
+@router.get('/{task_id}/conversation')
+async def get_task_conversation(task_id: int, owner: str = Depends(get_owner_identity),
+                                session: AsyncSession = Depends(get_db)) -> dict:
+    """Let Work reopen the correct Chat conversation without exposing its identity publicly."""
+    await require_task_access(session, task_id, owner)
+    if await session.get(Task, task_id) is None:
+        raise HTTPException(404, 'Task not found')
+    message = await linked_user_message(session, task_id)
+    return {'conversation_id': message.conversation_id if message else None}

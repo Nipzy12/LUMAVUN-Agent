@@ -5,7 +5,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from luma_core.auth import get_owner_token
+from luma_core.auth import get_owner_token, get_owner_identity, optional_owner_identity
+from luma_core.memory.conversations import approval_visibility, require_task_access
 from luma_core.db.session import get_db
 from luma_core.governance.policy import GovernancePolicy
 from luma_core.models import ApprovalRequest, ApprovalStatus
@@ -62,8 +63,9 @@ async def list_approval_requests(
     action: str | None = None,
     limit: int = Query(default=100, le=500, ge=1),
     session: AsyncSession = Depends(get_db),
+    owner: str | None = Depends(optional_owner_identity),
 ) -> dict:
-    stmt = select(ApprovalRequest)
+    stmt = select(ApprovalRequest).where(approval_visibility(ApprovalRequest.target_type, ApprovalRequest.target_id, owner))
     if status is not None:
         stmt = stmt.where(ApprovalRequest.status == status)
     if action:
@@ -81,8 +83,9 @@ async def list_approval_requests(
 async def get_approval_request(
     request_id: int,
     session: AsyncSession = Depends(get_db),
+    owner: str | None = Depends(optional_owner_identity),
 ) -> dict:
-    stmt = select(ApprovalRequest).where(ApprovalRequest.id == request_id)
+    stmt = select(ApprovalRequest).where(approval_visibility(ApprovalRequest.target_type, ApprovalRequest.target_id, owner)).where(ApprovalRequest.id == request_id)
     result = await session.execute(stmt)
     req = result.scalar_one_or_none()
     if req is None:
@@ -106,12 +109,15 @@ async def create_approval_request(
     payload: ApprovalRequestCreate,
     session: AsyncSession = Depends(get_db),
     token: str = Depends(get_owner_token),
+    owner: str = Depends(get_owner_identity),
 ) -> dict:
     """Create an approval request for a sensitive action.
 
     Requires owner authentication. The authenticated owner identity is recorded
     in the audit log, never a hardcoded label for unauthenticated requests.
     """
+    if payload.target_type == 'task' and payload.target_id is not None:
+        await require_task_access(session, payload.target_id, owner)
     now = _now_iso()
     req = ApprovalRequest(
         action=payload.action,
@@ -146,6 +152,7 @@ async def approve_request(
     payload: ApprovalDecision | None = None,
     session: AsyncSession = Depends(get_db),
     token: str = Depends(get_owner_token),
+    owner: str = Depends(get_owner_identity),
 ) -> dict:
     """Owner-only approval of a pending approval request.
 
@@ -156,6 +163,8 @@ async def approve_request(
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    if req.target_type == 'task' and req.target_id is not None:
+        await require_task_access(session, req.target_id, owner)
     if req.status != ApprovalStatus.pending:
         raise HTTPException(
             status_code=400,
@@ -193,6 +202,7 @@ async def deny_request(
     payload: ApprovalDecision | None = None,
     session: AsyncSession = Depends(get_db),
     token: str = Depends(get_owner_token),
+    owner: str = Depends(get_owner_identity),
 ) -> dict:
     """Owner-only denial of a pending approval request."""
     stmt = select(ApprovalRequest).where(ApprovalRequest.id == request_id)
@@ -200,6 +210,8 @@ async def deny_request(
     req = result.scalar_one_or_none()
     if req is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+    if req.target_type == 'task' and req.target_id is not None:
+        await require_task_access(session, req.target_id, owner)
     if req.status != ApprovalStatus.pending:
         raise HTTPException(
             status_code=400,

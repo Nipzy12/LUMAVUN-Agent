@@ -11,7 +11,7 @@ endpoints (health, list endpoints) are still allowed.
 
 import hmac
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 from pydantic import SecretStr
 
 from luma_core.config import get_settings
@@ -48,3 +48,15 @@ def current_owner_id(
     """
     # The owner is the dedicated "System Owner" agent created during bootstrap.
     return None
+
+
+def get_owner_identity(token: str = Depends(get_owner_token)) -> str:
+    """Authenticated server-side principal; browser headers cannot select an owner."""
+    return get_settings().local_owner_id
+
+
+def optional_owner_identity(x_luma_owner_token: str | None = Header(default=None)) -> str | None:
+    if x_luma_owner_token is None:
+        return None
+    get_owner_token(x_luma_owner_token)
+    return get_settings().local_owner_id

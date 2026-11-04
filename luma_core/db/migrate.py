@@ -27,8 +27,8 @@ async def create_tables() -> None:
                     raise RuntimeError(
                         f"Cannot create index {index.name!r} on table "
                         f"{table.name!r}: {exc}. If the database file predates "
-                        "the current models, delete it and restart so the schema "
-                        "is rebuilt."
+                        "the current models, back it up and apply a compatible migration; "
+                        "do not delete existing data."
                     ) from exc
 
 

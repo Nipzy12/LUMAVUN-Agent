@@ -401,8 +401,8 @@ are not included. Plain strings also receive the fixed system instructions.
 
 ### Verify through your connected Luma Office Chat interface
 
-This repository currently contains the backend, not the Chat/Work frontend. Use
-your existing connected UI; exact button names depend on that client.
+The repository now includes the lightweight Chat/Work frontend at `/office`.
+Connect the owner token in the UI before reading private conversations.
 
 1. Restart this updated backend with your configured OpenAI or OpenRouter provider
    and a disposable SQLite database, for example in Windows CMD:
@@ -430,3 +430,194 @@ The application does not fabricate the smoke response, rewrite the model result 
 force exact formatting, or retry a noncompliant answer automatically. A process
 interruption can still require the manual cancellation/recreation recovery described
 in Phase 3.1. No Phase 3.2 conversation memory is implemented.
+
+## Phase 3.2 — Conversation Memory Engine
+
+The backend now stores private conversations and ordered user/assistant messages
+in SQLite. Existing one-task API clients keep working. To use memory, clients must
+create their tasks through `POST /api/conversations/{id}/messages`; old
+`POST /api/tasks` calls do not implicitly create a conversation or share history.
+
+### Storage, ownership, and migration
+
+Startup adds only `conversations` and `conversation_messages`, with indexes and
+uniqueness constraints. Legacy agent, task, approval, assignment and audit table
+columns and records are preserved. No database deletion or reset is required.
+Before upgrading, stop the backend and make a backup of your SQLite database, then
+restart the updated backend normally. Startup initialization is idempotent. Do not
+run an older backend against a database containing private conversation tasks:
+older code does not implement their visibility filters.
+
+Conversation UUIDs are not credentials. Every conversation API requires
+`X-Luma-Owner-Token`. The associated owner identity comes from server configuration
+`LOCAL_OWNER_ID` (default `local-owner`), never from client headers or request bodies.
+Keep that ID stable when rotating `LOCAL_OWNER_TOKEN`; changing the ID makes the
+previous owner's conversations inaccessible through the API. This remains a
+single-owner deployment: all browsers using the same owner token share that owner's
+conversations. It is not a new multi-user login or per-device session system.
+
+Conversation-linked tasks, their approvals, and related audit events are hidden
+from unauthenticated reads and from other owner identities. Authenticated Work
+requests must include the owner token to see these tasks. Legacy non-conversation
+records retain their previous public-read behavior. No history is logged in audit
+records. Known configured secrets are redacted from newly stored message text,
+conversation titles, history sent to providers, and assistant results. Do not paste
+arbitrary credentials into tasks or metadata; this is not a general secret scanner.
+SQLite files contain private text at rest and should remain locally protected.
+
+### Conversation API
+
+All routes below require the owner token. IDs use UUID strings for conversations
+and monotonically ordered integer IDs for messages. Timestamps are UTC ISO strings.
+
+| Method | Route | Behavior |
+|---|---|---|
+| POST | `/api/conversations` | Create with optional `title`; default `New conversation` |
+| GET | `/api/conversations` | Owner's sidebar list, `limit` 1–100 and `offset` |
+| GET | `/api/conversations/{id}` | Details and chronological messages; `after_id`, `limit` 1–200, `has_more`, `next_after_id` |
+| PATCH | `/api/conversations/{id}` | Rename with required nonblank `title` |
+| POST | `/api/conversations/{id}/messages` | Append a user message and create/route its task; use the same route to continue |
+
+User message body:
+
+```json
+{
+  "client_message_id": "6cbe4c46-d4a9-4ac9-8e53-4ead85eb076a",
+  "content": "Remember that our project is named Aurora.",
+  "job_type": "backend engineer"
+}
+```
+
+Generate a new UUID for each new message (browser `crypto.randomUUID()` or Python
+`uuid.uuid4()`); reuse it when retrying delivery of that same message. Repeated
+requests with matching content and job type return the existing message/task with
+`replayed: true`, without new rows or AI calls. Reusing it for different content
+returns 409. Conversation titles are limited to 255 characters and current user
+messages to 512 characters, preserving the existing task-title input limit.
+`job_type` is optional, but a suitable worker is needed for routing and execution;
+without one the task stays pending. Assistant roles, owner IDs, and arbitrary task
+IDs are never accepted from the message API.
+
+The response contains `message`, `task`, and `replayed`. The user's message row links
+its task to the conversation, so no column is added to legacy `tasks`. Each user
+message creates one task. There is at most one pending/assigned/in-progress task
+per conversation: finish or cancel it before adding the next turn (otherwise 409).
+Separate conversations can progress independently. Conversation task content is
+immutable; corrections are new turns. Start/completion must use the approved
+executor, not manual status PATCH. A failed latest turn can be reassigned with
+PATCH and retried with a new approval, or followed by a new message. Old turns
+cannot be executed/retried after a newer user message exists.
+
+### Execution and bounded memory
+
+Posting or reopening a conversation never executes AI. For every turn, create and
+approve an `execute_task` approval targeting that task, then explicitly call
+`POST /api/tasks/{task_id}/execute` with its `approval_id`, as in Phase 3.1.
+Approvals are task-specific and single-use. Historical text cannot authorize a call.
+
+The prompt retains the fixed system message and current primary instruction.
+`conversation_history` is a separate array of `{role, content}` entries inside the
+untrusted user payload, in chronological order. Only earlier messages in the same
+conversation whose tasks completed are eligible; failed, cancelled, current, future,
+and other-conversation turns are excluded. Context limits apply before serialization:
+
+```dotenv
+LOCAL_OWNER_ID=local-owner
+CONVERSATION_CONTEXT_MAX_MESSAGES=20
+CONVERSATION_CONTEXT_MAX_CHARS=12000
+```
+
+Both limits bound history, not the current instruction or fixed system instructions.
+Newest eligible messages are preferred; the oldest included message may be shortened
+to fit the remaining character budget. A `history_truncated` marker tells the model
+when a window was shortened. A window may contain a partial turn; there is no summary,
+vector retrieval, embedding, or unbounded full-history prompt. Set either limit to
+zero to omit history from prompts while still storing conversations. Full stored
+history remains accessible through paginated authenticated reads.
+
+Task completion, one assistant message, the conversation update timestamp, and
+completion audit commit together. A database uniqueness constraint prevents more
+than one assistant message per task. Failed, cancelled, or discarded executions
+never create assistant messages. Cancelling during a provider call preserves the
+cancelled task and discards its late answer; a remote call may still incur cost.
+A crash/storage failure after claiming can leave `in_progress`; cancel and create
+a new turn only after checking that the old process has stopped. There is no
+automatic retry, scheduler, shell, file-writing tool, or external action capability.
+
+### Chat/Work integration and a two-message check
+
+The synchronized lightweight Chat/Work frontend is now integrated and automatically
+served at `http://127.0.0.1:8000/office` (also `/office/`). No installer run is needed;
+`install_office_ui.py` remains available and exits without changing an already
+mounted app. The existing design, Work panels, and explicit approval controls are
+preserved. There is no framework, CDN, Node.js runtime, or production dependency added.
+
+- Connect your **owner token**, not a provider API key. All API reads and writes
+  include that token while connected. It lives only in tab memory: reload requires
+  reconnecting. Neither localStorage, sessionStorage, nor browser databases store it.
+- Sidebar lists saved conversations, fetching API pages as needed. **Tugas baru**
+  creates a persistent conversation. **Ubah nama** renames the selected conversation.
+- Opening a conversation restores messages in server-ID order. Its nonsecret UUID
+  is retained in the URL fragment so refresh can reopen it after reconnecting.
+  The last task's team is restored without overriding subsequent user selection.
+- Send uses the conversation message API and a stable delivery UUID. A lost POST
+  response is reconciled against stored message IDs; no second task is created.
+  A draft/delivery UUID is not persisted across reload: inspect history before
+  resending after a full page restart. No automatic message or execution retries occur.
+- Every task still requires **Minta approval → Setujui → Jalankan dengan AI**.
+  Approving alone does not execute it. The UI refreshes server state and renders
+  only persisted assistant messages, without inventing or duplicating an answer.
+- Cancellation stays available while execution is pending. Pending/unassigned
+  tasks can also be cancelled to unblock a conversation. Cancelling does not undo
+  a remote provider request or its cost. Refresh/reconnect never starts execution.
+- Work retains agent creation, departments, tasks, approvals and audit activity.
+  **Lihat** reopens the associated conversation using authenticated
+  `GET /api/tasks/{id}/conversation`; legacy tasks return a null conversation ID
+  and remain readable individually. Work requests include the owner token.
+- Forgetting/replacing a token clears the private view and ignores delayed responses
+  from the previous session. Invalid tokens cannot leave old private data displayed.
+  Rendered messages and model results use text nodes, not executable HTML.
+
+Private API responses and UI assets use `Cache-Control: no-store`; owner-filtered
+responses also vary on the owner-token header. The UI has a same-origin Content
+Security Policy and an asset allowlist (only app.js and styles.css are public).
+Do not publish an older UI/backend against this private-memory database. Department
+deletion is refused when it would cascade into conversation tasks; archive the
+department instead to preserve history.
+
+To verify through `/office`:
+
+1. Start the backend against a new disposable database, configure OpenAI or
+   OpenRouter, and ensure a matching worker exists. In Windows CMD:
+   `set DATABASE_URL=sqlite:///./luma-memory-trial.db`, then
+   `python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000`.
+2. Click **Tugas baru**. Send **Remember that our project is named Aurora. Reply
+   only ACK.** Approve and execute that turn; expect `ACK`.
+3. In the same conversation, send **What is our project's name? Reply only with
+   the name.** Approve and execute its new task; expect `Aurora`.
+4. Restart the backend with the same database, reopen the conversation, and confirm
+   both user messages and both assistant messages remain in chronological order.
+5. Create a different conversation and ask the same name question. Its prompt must
+   contain none of the Aurora conversation's messages. A model can guess a name,
+   so automated payload-isolation tests provide stronger evidence than its wording.
+
+These are two real provider calls and may incur cost; use nonsensitive text. The same test can also be done from authenticated `/docs` using the conversation
+routes followed by the existing approval and execute routes.
+Automated tests mock both providers; no real keys or paid calls are required.
+Phase 3.3 features and frontend replacement are outside this change.
+
+
+### Optional browser integration checks
+
+`python -m pytest -ra` runs backend, migration and UI-serving tests without any
+browser package. Optional real-browser checks live in `tests/browser_office.py`.
+Run them with a development Python that has Playwright and Chromium installed;
+set `LUMA_TEST_PYTHON` to the application virtual environment's Python if different.
+`CHROMIUM_BINARY` can select an existing Chromium executable. These are test-only
+tools, not application dependencies. The harness starts a temporary SQLite-backed
+server with a fake AI provider; it never calls OpenRouter or OpenAI.
+
+The browser checks cover two-turn recall, explicit approvals, refresh/restart,
+private-read authentication, message pagination, lost-response/double-send recovery,
+cancellation, Work actions, text-only output rendering, invalid tokens and stale
+responses after logout. A screenshot can be saved by setting `LUMA_UI_ARTIFACT_DIR`.

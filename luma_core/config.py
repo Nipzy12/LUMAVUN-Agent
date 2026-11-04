@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # Local owner token for the self-hosted MVP owner-authentication flow.
     # In production this must be overridden via environment variable.
     local_owner_token: SecretStr | None = None
+    # Stable identity, independent of token rotation. Never accepted from clients.
+    local_owner_id: str = Field(default="local-owner", min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.-]+$")
+    conversation_context_max_messages: int = Field(default=20, ge=0, le=100)
+    conversation_context_max_chars: int = Field(default=12000, ge=0, le=100000)
 
     @property
     def is_debug(self) -> bool:

@@ -3,3 +3,6 @@
 
 /* Center the welcome identity independent of inline text flow. */
 .chat-welcome .welcome-mark{display:grid;margin:0 auto 19px}.chat-welcome .eyebrow{display:block}
+
+/* Persistent conversations retain the existing lightweight layout. */
+[hidden]{display:none!important}.conversation-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 auto 1rem;max-width:850px}.conversation-bar h2{font-size:1rem;overflow-wrap:anywhere}.task-panel{padding:1rem;border:1px solid #e5e5e2;border-radius:16px;margin:1rem 0}.toast.error{background:#934d55}.message .result{white-space:pre-wrap;overflow-wrap:anywhere}.history-item:disabled{opacity:.6}

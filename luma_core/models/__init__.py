@@ -1,4 +1,5 @@
 from luma_core.models.models import (
+    Conversation, ConversationMessage,
     Agent,
     AgentStatus,
     AgentType,
@@ -16,6 +17,7 @@ from luma_core.models.models import (
 )
 
 __all__ = [
+    "Conversation", "ConversationMessage",
     "Agent",
     "AgentStatus",
     "AgentType",

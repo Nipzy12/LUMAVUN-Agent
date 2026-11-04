@@ -2,10 +2,11 @@ from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.auth import get_owner_token
+from luma_core.models import Agent, Task, ConversationMessage
 from luma_core.db.session import get_db
 from luma_core.models import Department, DepartmentStatus
 from luma_core.schemas import DepartmentCreate, DepartmentResponse, DepartmentUpdate
@@ -164,7 +165,16 @@ async def delete_department(
     session: AsyncSession = Depends(get_db),
     token: str = Depends(get_owner_token),
 ) -> None:
+    # Serialize against conversation task creation before checking cascade safety.
+    await session.execute(update(Department).where(Department.id == department_id)
+                          .values(updated_at=Department.updated_at))
     department = await session.get(Department, department_id)
     if department is None:
         raise HTTPException(status_code=404, detail="Department not found")
+    linked = await session.scalar(select(ConversationMessage.id).join(Task, Task.id == ConversationMessage.task_id).where(
+        or_(Task.department_id == department_id,
+            Task.agent_id.in_(select(Agent.id).where(Agent.department_id == department_id)))
+    ).limit(1))
+    if linked is not None:
+        raise HTTPException(409, 'Department has conversation tasks; archive it instead of deleting history')
     await session.delete(department)

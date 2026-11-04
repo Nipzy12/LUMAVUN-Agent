@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.db.session import get_db
+from luma_core.auth import optional_owner_identity
+from luma_core.memory.conversations import audit_visibility
 from luma_core.models import AuditEvent
 
 router = APIRouter(prefix="/api/audit-events", tags=["audit"])
@@ -43,8 +45,9 @@ async def list_audit_events(
     actor: str | None = Query(default=None),
     limit: int = Query(default=100, le=500, ge=1),
     session: AsyncSession = Depends(get_db),
+    owner: str | None = Depends(optional_owner_identity),
 ) -> dict:
-    stmt = select(AuditEvent)
+    stmt = select(AuditEvent).where(audit_visibility(AuditEvent, owner))
     if action:
         stmt = stmt.where(AuditEvent.action == action)
     if actor:
