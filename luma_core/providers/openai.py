@@ -19,9 +19,9 @@ class OpenAIProvider(BaseModelProvider):
                 response = await client.post(
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {self.settings.openai_api_key.get_secret_value()}"},
-                    json={"model": self.settings.openai_model,
+                    json={"model": kwargs.get("model", self.settings.openai_model),
                           "messages": provider_messages(prompt, self.settings),
-                          "max_completion_tokens": self.settings.ai_max_output_tokens},
+                          "max_completion_tokens": kwargs.get("max_tokens", self.settings.ai_max_output_tokens)},
                 )
                 response.raise_for_status()
                 data = response.json()

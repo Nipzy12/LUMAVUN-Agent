@@ -621,3 +621,95 @@ The browser checks cover two-turn recall, explicit approvals, refresh/restart,
 private-read authentication, message pagination, lost-response/double-send recovery,
 cancellation, Work actions, text-only output rendering, invalid tokens and stale
 responses after logout. A screenshot can be saved by setting `LUMA_UI_ARTIFACT_DIR`.
+
+## Phase 3.2.1 — separate Chat and Work
+
+Ordinary **Chat** is authenticated, persistent text generation. Sending is an explicit
+request to the configured cloud model; it creates no task or approval. **Work →
+Buat task** opens the governed task composer. Work still requires task-specific
+approval before executing an assigned task. Existing conversation-linked tasks,
+agent management, cancellation, audit, and results remain available.
+
+The sidebar supports search within loaded conversations, a visible toggle and
+Ctrl+Shift+S (when not intercepted by the browser). Only sidebar visibility and
+Low/Medium/High preferences enter localStorage. Tokens remain in tab memory;
+reconnect after refreshing. The empty Chat composer is centered; active histories
+use the bottom composer. Work task controls remain visibly labeled.
+
+### Direct Chat API and limits
+
+All `/api/chat/**` routes require `X-Luma-Owner-Token`, including attachment reads.
+Create a conversation with `POST /api/conversations`, then send
+`POST /api/chat/conversations/{id}/messages` with:
+
+```json
+{"client_message_id":"a unique UUID", "content":"Reply only LUMA_SMOKE_OK", "level":"medium", "attachments":[]}
+```
+
+The client must reuse the same UUID and payload when reconciling an uncertain
+submission. Completed requests replay without another provider call; running and
+failed attempts return 409. At most one active request/task per conversation and
+three active direct requests per owner are permitted. Messages are limited to 512
+characters, bounded history uses the Phase 3.2 limits, and provider calls use
+`AI_TIMEOUT_SECONDS` with no automatic retry. Failed requests retain the user
+message but never fabricate an assistant response. Private responses disable caching.
+
+Each provider has configurable `OPENAI_CHAT_{LOW,MEDIUM,HIGH}_MODEL` or
+`OPENROUTER_CHAT_{LOW,MEDIUM,HIGH}_MODEL` mappings; blank mappings use the existing
+provider model. Output budgets use `CHAT_{LOW,MEDIUM,HIGH}_TOKENS`. Medium is the
+initial default. Levels do not guarantee intelligence or cost: these depend on
+the chosen model. No reasoning-effort parameters are sent, ensuring compatibility
+with models that do not support them. Work provider settings remain unchanged.
+
+### Attachments
+
+The plus menu uploads real files to authenticated `POST /api/chat/attachments`
+(raw request body, Content-Type, X-File-Name). The returned UUID can be attached to
+a message; authenticated `GET /api/chat/attachments/{uuid}` retrieves it. Limit:
+three files per request, 4 MiB per file. Supported: validated PNG/JPEG/WebP
+(maximum 16 million pixels), UTF-8 TXT, and text PDFs (maximum 30 pages and 20,000
+extracted characters per document). Encrypted/scanned-only PDFs, OCR, audio,
+video and other formats are unsupported. PDFs are parsed as text, never executed.
+Image support is explicitly allowlisted by exact model ID in `CHAT_IMAGE_MODELS`;
+misconfigured/unsupported remote models produce a sanitized provider failure.
+Images use inline data URLs sent only to the selected provider. Text documents
+are redacted and stored as extracted text, not original files. Images are stored
+under random UUIDs in `CHAT_ATTACHMENT_DIR`, never under user-supplied paths and
+never mounted as static content. Unsent attachments can be removed from the
+composer; uploaded files currently require administrative retention/cleanup.
+Do not expose the upload directory or database, which contain private material.
+
+Additive startup creates `chat_requests` and `chat_attachments` without altering
+existing tables. Back up the SQLite file and upload directory together when the
+server is stopped. A process crash after claiming a request can leave it running;
+there is deliberately no automatic retry/recovery that could cause another paid
+call. Inspect history and use a new conversation after stopping the old process.
+Image contents cannot be semantically scanned for secrets; inspect files before
+uploading. Historical image bytes are not resent on follow-ups; document text and
+text exchanges are included within the configured context bounds.
+
+### Windows 10 CMD verification
+
+From the project folder with the server stopped:
+
+```bat
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000
+```
+
+Keep your existing `.env` and database. Add the optional settings from
+`.env.example`, configure your provider privately, and open
+`http://127.0.0.1:8000/office`. Connect the owner token. In Chat send
+“Remember the project name Aurora”, then “What is the project name?”; there should
+be two answers and no new Work tasks. Refresh, reconnect, and reopen the history.
+Try a small TXT and an image with a supported vision model, removing an attachment
+before sending. Compare the usage levels after configuring distinct model mappings.
+In Work create a task, confirm it remains assigned, then explicitly request,
+approve, and execute it. Toggle the sidebar by button and shortcut; test a narrow
+window. Real provider requests incur provider charges.
+
+Optional browser tests require Python Playwright and Chromium (development only):
+`python tests/browser_office.py`. All automated AI responses are mocked; tests use
+disposable databases. No production Node/React runtime is needed.

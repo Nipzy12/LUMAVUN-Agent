@@ -31,3 +31,5 @@ Thumbs.db
 
 # SQLite
 luma.db
+
+private_uploads/

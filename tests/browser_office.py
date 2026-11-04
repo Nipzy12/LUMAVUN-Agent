@@ -100,7 +100,8 @@ class OfficeBrowserTests(unittest.TestCase):
         self.wait_state("state.token && state.agents.length >= 2")
 
     def new_conversation(self):
-        self.page.locator('#newTaskBtn').click()
+        self.page.locator('#tabWork').click()
+        self.page.locator('#workTaskBtn').click()
         self.wait_state('state.conversationId && !state.busy && state.conversation')
         self.page.locator('#jobTypeSelect').select_option('backend engineer')
         return self.page.evaluate('state.conversationId')
@@ -120,6 +121,30 @@ class OfficeBrowserTests(unittest.TestCase):
         self.approve()
         self.page.get_by_role('button', name='3. Jalankan dengan AI', exact=True).click()
         self.wait_state('selectedTask()?.status === "completed" && state.runningTasks.size === 0')
+
+    def test_direct_chat_sidebar_and_usage(self):
+        self.page.locator('#newTaskBtn').click()
+        self.wait_state('state.conversationId && !state.busy')
+        cid = self.page.evaluate('state.conversationId')
+        self.page.locator('#usageLevel').select_option('high')
+        self.page.locator('#attachmentInput').set_input_files({'name':'note.txt','mimeType':'text/plain','buffer':b'Safe document preview'})
+        expect(self.page.locator('#attachmentPreview')).to_contain_text('Safe document preview')
+        self.page.locator('#attachmentPreview').get_by_role('button',name='Remove').click()
+        expect(self.page.locator('#attachmentPreview')).to_be_empty()
+        self.page.locator('#promptInput').fill('Remember Aurora')
+        self.page.locator('#sendBtn').click()
+        self.wait_state('!state.busy && state.messages.length === 2')
+        self.assertTrue(all(m['task_id'] is None for m in self.api('GET', f'/api/conversations/{cid}')['messages']))
+        expect(self.page.locator('[data-role="assistant"]')).to_contain_text('Aurora')
+        self.page.keyboard.press('Control+Shift+s')
+        expect(self.page.locator('#sidebar')).not_to_be_visible()
+        self.page.locator('#menuToggle').click()
+        expect(self.page.locator('#sidebar')).to_be_visible()
+        self.page.set_viewport_size({'width':390,'height':844})
+        self.assertLessEqual(self.page.evaluate('document.documentElement.scrollWidth'),390)
+        self.page.reload(); self.connect()
+        self.wait_state('state.messages.length === 2')
+        expect(self.page.locator('#usageLevel')).to_have_value('high')
 
     def test_two_turn_memory_refresh_restart_and_work(self):
         headers = []

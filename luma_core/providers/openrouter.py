@@ -19,9 +19,9 @@ class OpenRouterProvider(BaseModelProvider):
                 response = await client.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={"Authorization": f"Bearer {self.settings.openrouter_api_key.get_secret_value()}"},
-                    json={"model": self.settings.openrouter_model,
+                    json={"model": kwargs.get("model", self.settings.openrouter_model),
                           "messages": provider_messages(prompt, self.settings),
-                          "max_tokens": self.settings.ai_max_output_tokens},
+                          "max_tokens": kwargs.get("max_tokens", self.settings.ai_max_output_tokens)},
                 )
                 response.raise_for_status()
                 data = response.json()

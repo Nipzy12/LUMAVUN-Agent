@@ -40,6 +40,19 @@ class Settings(BaseSettings):
     conversation_context_max_messages: int = Field(default=20, ge=0, le=100)
     conversation_context_max_chars: int = Field(default=12000, ge=0, le=100000)
 
+    # Text chat presets are server-controlled; no client endpoints or credentials.
+    openai_chat_low_model: str | None = None
+    openai_chat_medium_model: str | None = None
+    openai_chat_high_model: str | None = None
+    openrouter_chat_low_model: str | None = None
+    openrouter_chat_medium_model: str | None = None
+    openrouter_chat_high_model: str | None = None
+    chat_low_tokens: int = Field(default=256, ge=1, le=8192)
+    chat_medium_tokens: int = Field(default=1024, ge=1, le=8192)
+    chat_high_tokens: int = Field(default=2048, ge=1, le=8192)
+    chat_image_models: str = "gpt-4o-mini,openai/gpt-4o-mini"
+    chat_attachment_dir: str = "./private_uploads"
+
     @property
     def is_debug(self) -> bool:
         return self.app_env == "development" and self.app_debug
