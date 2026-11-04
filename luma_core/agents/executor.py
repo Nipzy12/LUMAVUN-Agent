@@ -7,6 +7,8 @@ from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.config import get_settings
+from luma_core.agents.prompts import AgentContext, build_task_prompt
+from luma_core.providers.prompts import redact_secrets
 from luma_core.providers.registry import create_registry
 from luma_core.providers.base import BaseModelProvider
 from luma_core.governance.policy import GovernancePolicy
@@ -55,13 +57,23 @@ async def execute_task(session: AsyncSession, task_id: int, approval_id: int,
     await session.commit()  # release SQLite lock before the network call
     task = await session.get(Task, task_id)
     try:
+        assigned_agent = task.agent
+        agent_context = None
+        if assigned_agent is not None:
+            agent_context = AgentContext(
+                name=assigned_agent.name,
+                role=assigned_agent.role,
+                skills=tuple(assigned_agent.get_skills()),
+                department=assigned_agent.department.name if assigned_agent.department else None,
+            )
+        prompt = build_task_prompt(task.title, task.description, agent_context)
         response = await asyncio.wait_for(
-            provider.chat(f'Title: {task.title}\nDescription: {task.description or ""}'),
+            provider.chat(prompt),
             timeout=get_settings().ai_timeout_seconds,
         )
         if not isinstance(response.text, str) or not response.text.strip():
             raise ValueError('Empty response')
-        result, error, status = response.text, None, TaskStatus.completed
+        result, error, status = redact_secrets(response.text, get_settings()), None, TaskStatus.completed
     except Exception:
         result, error, status = None, 'AI execution failed; check provider configuration or retry with a new approval.', TaskStatus.failed
     finished = await session.execute(update(Task).where(

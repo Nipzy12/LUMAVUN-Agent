@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from luma_core.config import Settings
+from luma_core.agents.prompts import TaskPrompt
 
 
 @dataclass
@@ -28,7 +29,7 @@ class BaseModelProvider(ABC):
         ...
 
     @abstractmethod
-    async def chat(self, prompt: str, **kwargs: object) -> ProviderResponse:
+    async def chat(self, prompt: TaskPrompt | str, **kwargs: object) -> ProviderResponse:
         ...
 
 
@@ -42,5 +43,5 @@ class UnavailableProvider(BaseModelProvider):
     def is_available(self) -> bool:
         return False
 
-    async def chat(self, prompt: str, **kwargs: object) -> ProviderResponse:
+    async def chat(self, prompt: TaskPrompt | str, **kwargs: object) -> ProviderResponse:
         raise RuntimeError("No AI provider is configured")

@@ -269,8 +269,9 @@ assigning a task never calls AI. Default autonomy remains `supervised`.
 `ProviderRegistry` selects OpenAI or OpenRouter (OpenAI-compatible Chat Completions)
 via the existing httpx dependency, with bounded output, timeout,
 and no automatic retries. No Docker, Ollama, GPU, or local model is required.
-Only the selected task title and description are sent to the selected provider. Do not include
-secrets in task text. Real calls require a provider account and may incur costs.
+The selected task instruction, optional description, and assigned-agent name, role,
+skills, and department are sent to the selected provider. Do not include secrets
+in task text or agent metadata. Real calls require a provider account and may incur costs.
 
 ### Windows 10 CMD
 
@@ -363,3 +364,69 @@ so inspect before retrying. Public read endpoints
 remain as in Phase 2.1: keep this local service bound to localhost.
 
 Tests use mock providers and HTTP mocks; no real API key or paid call is needed.
+
+
+## Phase 3.1.1 — Agent Prompt Intelligence
+
+Execution now uses a provider-neutral `TaskPrompt` built from the current task and
+its assigned agent. A fixed application-owned system message instructs the model
+to execute the user instruction directly and obey explicit output formatting.
+A separate JSON user message contains:
+
+- `primary_instruction`: the exact task title, interpreted as an instruction.
+- `supplementary_context`: the description, omitted when absent or whitespace-only.
+- `assigned_agent`: name, role, skills, and department, when an agent is available.
+
+Agent metadata is background context, not privileged instructions. User-controlled
+text never becomes a system message. Safety instructions remain fixed and do not
+grant tools or permissions; owner authentication, task-specific approval, atomic
+execution, cancellation, and audit are still enforced by application code.
+Neither adapters nor the prompt builder execute generated text.
+
+Both OpenAI and OpenRouter accept `TaskPrompt` and the original plain-string
+`chat(prompt)` calling convention. Custom provider implementations should accept
+`TaskPrompt | str`; use `provider_messages` for the shared message serialization
+and configured-secret redaction. Model credentials are used in HTTP authorization,
+never added as prompt context. Known configured provider keys and owner tokens are
+redacted from outbound user content and generated results. Raw provider errors
+remain sanitized, and prompts/results are not copied to audit records. This is
+not a general detector for arbitrary credentials users paste into stored task or
+agent fields; do not store secrets there. Existing read APIs still return those
+user-supplied fields.
+
+There is no schema change, conversation memory, new endpoint, new dependency,
+automatic execution, or Chat/Work UI modification. Each request uses only its
+current task and assigned-agent context. Historical task results and chat history
+are not included. Plain strings also receive the fixed system instructions.
+
+### Verify through your connected Luma Office Chat interface
+
+This repository currently contains the backend, not the Chat/Work frontend. Use
+your existing connected UI; exact button names depend on that client.
+
+1. Restart this updated backend with your configured OpenAI or OpenRouter provider
+   and a disposable SQLite database, for example in Windows CMD:
+   `set DATABASE_URL=sqlite:///./luma-prompt-trial.db` followed by
+   `python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000`.
+   Use a new filename so existing Phase 2.1/3.1 data is not opened for the trial.
+2. Create/select a worker and ensure the UI routes its task to that worker. Send
+   **Reply only LUMA_SMOKE_OK** in Chat. Inspect the resulting task in Work: its
+   title must preserve that exact instruction. If the UI replaces it with a summary,
+   correct that mapping in the UI before testing the backend behavior.
+3. Confirm the task is `assigned`, then explicitly approve `execute_task` for this
+   task as owner and request execution using the existing controls. If your UI has
+   no approval controls, use the existing API flow documented above or `/docs`.
+4. Inspect the task result in Work. Expected result: exactly `LUMA_SMOKE_OK`, with
+   no explanation or Markdown, and status `completed`. No follow-up prompt should
+   be needed. Check the audit for the corresponding start/completion events.
+5. Optionally try a new task: **Reply with exactly two bullet points about API
+   design**, with description **Audience: a beginner Python developer**. Expect
+   two direct bullet points using the description as supplementary context. This
+   is a separate paid call and requires its own task-specific approval.
+
+Automated tests mock both providers; they validate message structure and persisted
+results, not a remote model's intelligence. Actual compliance depends on the model.
+The application does not fabricate the smoke response, rewrite the model result to
+force exact formatting, or retry a noncompliant answer automatically. A process
+interruption can still require the manual cancellation/recreation recovery described
+in Phase 3.1. No Phase 3.2 conversation memory is implemented.
