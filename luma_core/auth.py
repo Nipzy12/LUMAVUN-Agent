@@ -9,6 +9,8 @@ request that requires owner privileges. Unauthenticated requests to public
 endpoints (health, list endpoints) are still allowed.
 """
 
+import hmac
+
 from fastapi import Header, HTTPException
 from pydantic import SecretStr
 
@@ -26,7 +28,7 @@ def get_owner_token(x_luma_owner_token: str | None = Header(default=None)) -> st
     settings = get_settings()
     expected = settings.local_owner_token.get_secret_value() if settings.local_owner_token else ""
     provided = x_luma_owner_token or ""
-    if not expected or not provided or provided != expected:
+    if not expected or not provided or not hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(
             status_code=401,
             detail="Missing or invalid owner token. Provide X-Luma-Owner-Token.",

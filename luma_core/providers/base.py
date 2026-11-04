@@ -14,7 +14,7 @@ class ProviderResponse:
 class BaseModelProvider(ABC):
     """Provider-agnostic interface for cloud and offline AI providers.
 
-    Phase 1 defines the contract. Concrete providers are wired later.
+    Phase 3.1 uses this contract for optional text-only cloud generation.
     """
 
     settings: Settings

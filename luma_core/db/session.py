@@ -25,7 +25,7 @@ _ENGINE_URL = _normalize_database_url(settings.database_url)
 engine = create_async_engine(
     _ENGINE_URL,
     echo=settings.database_url_echo,
-    poolclass=StaticPool if _ENGINE_URL.startswith("sqlite") else None,
+    poolclass=StaticPool if _ENGINE_URL in {"sqlite+aiosqlite://", "sqlite+aiosqlite:///:memory:"} else None,
 )
 
 async_session_factory = async_sessionmaker(

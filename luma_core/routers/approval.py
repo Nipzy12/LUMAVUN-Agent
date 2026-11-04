@@ -2,7 +2,7 @@ from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.auth import get_owner_token
@@ -162,11 +162,14 @@ async def approve_request(
             detail=f"Cannot approve request in status {req.status.value!r}.",
         )
 
-    req.status = ApprovalStatus.approved
-    req.reviewed_by = "local-owner"
-    req.review_note = payload.note if payload else None
-    req.updated_at = _now_iso()
-    await session.flush()
+    decision = await session.execute(update(ApprovalRequest).where(
+        ApprovalRequest.id == request_id,
+        ApprovalRequest.status == ApprovalStatus.pending,
+    ).values(status=ApprovalStatus.approved, reviewed_by="local-owner",
+             review_note=payload.note if payload else None, updated_at=_now_iso())
+      .execution_options(synchronize_session=False))
+    if decision.rowcount != 1:
+        raise HTTPException(400, "Approval request has already been reviewed")
     await session.refresh(req)
 
     # Audit the approval decision.
@@ -203,11 +206,14 @@ async def deny_request(
             detail=f"Cannot deny request in status {req.status.value!r}.",
         )
 
-    req.status = ApprovalStatus.denied
-    req.reviewed_by = "local-owner"
-    req.review_note = payload.note if payload else None
-    req.updated_at = _now_iso()
-    await session.flush()
+    decision = await session.execute(update(ApprovalRequest).where(
+        ApprovalRequest.id == request_id,
+        ApprovalRequest.status == ApprovalStatus.pending,
+    ).values(status=ApprovalStatus.denied, reviewed_by="local-owner",
+             review_note=payload.note if payload else None, updated_at=_now_iso())
+      .execution_options(synchronize_session=False))
+    if decision.rowcount != 1:
+        raise HTTPException(400, "Approval request has already been reviewed")
     await session.refresh(req)
 
     _policy.record_audit(

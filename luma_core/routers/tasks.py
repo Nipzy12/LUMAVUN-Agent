@@ -2,13 +2,15 @@ from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.agents.registry import get_task_service
 from luma_core.auth import get_owner_token
 from luma_core.db.session import get_db
-from luma_core.models import Task, TaskStatus
+from luma_core.models import Task, TaskStatus, AuditEvent
+from luma_core.agents.executor import execute_task, get_execution_provider
+from luma_core.providers.base import BaseModelProvider
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -160,19 +162,42 @@ async def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    if payload.title is not None:
-        task.title = payload.title
-    if payload.description is not None:
-        task.description = payload.description
+    old_status = task.status
     if payload.status is not None:
         new_status = TaskStatus(payload.status)
-        try:
-            task.set_status(new_status)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    if payload.priority is not None:
-        task.priority = payload.priority
-    task.updated_at = _now_iso()
-    await session.flush()
+        if new_status.value not in TaskStatus.valid_transitions(old_status):
+            raise HTTPException(422, f"Invalid transition from {old_status.value!r} to {new_status.value!r}")
+        if old_status == TaskStatus.in_progress and new_status != TaskStatus.cancelled:
+            latest = await session.scalar(select(AuditEvent.action).where(
+                AuditEvent.target_type == 'task', AuditEvent.target_id == task_id,
+                AuditEvent.action.like('task_execution_%'),
+            ).order_by(AuditEvent.id.desc()).limit(1))
+            if latest == 'task_execution_started':
+                raise HTTPException(409, 'Executor owns this task; only cancellation is allowed')
+    values = {key: value for key, value in payload.model_dump().items() if value is not None}
+    if 'status' in values:
+        values['status'] = TaskStatus(values['status'])
+    values['updated_at'] = _now_iso()
+    changed = await session.execute(update(Task).where(
+        Task.id == task_id, Task.status == old_status,
+    ).values(**values).execution_options(synchronize_session=False))
+    if changed.rowcount != 1:
+        raise HTTPException(409, 'Task changed concurrently; reload before updating')
     await session.refresh(task)
+    return _serialize_task(task)
+
+
+class TaskExecutionRequest(BaseModel):
+    approval_id: int = Field(gt=0)
+
+
+@router.post('/{task_id}/execute', response_model=_TaskResponse)
+async def execute_assigned_task(
+    task_id: int,
+    payload: TaskExecutionRequest,
+    token: str = Depends(get_owner_token),
+    session: AsyncSession = Depends(get_db),
+    provider: BaseModelProvider = Depends(get_execution_provider),
+) -> dict:
+    task = await execute_task(session, task_id, payload.approval_id, provider)
     return _serialize_task(task)

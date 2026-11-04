@@ -1,4 +1,4 @@
-from typing import Type
+from luma_core.providers.openai import OpenAIProvider
 
 from luma_core.config import Settings
 from luma_core.providers.base import BaseModelProvider, UnavailableProvider
@@ -7,15 +7,14 @@ from luma_core.providers.base import BaseModelProvider, UnavailableProvider
 class ProviderRegistry:
     """Registers and resolves model providers by name.
 
-    Phase 1: only the unavailable default is registered. Future phases add
-    Ollama, OpenAI, Anthropic, and any other provider without coupling the
-    core to their SDKs.
+    Cloud AI is opt-in; unconfigured installations remain fully usable.
     """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._providers: dict[str, type[BaseModelProvider]] = {
             "unavailable": UnavailableProvider,
+            "openai": OpenAIProvider,
         }
 
     def register(self, name: str, provider_cls: type[BaseModelProvider]) -> None:
@@ -23,7 +22,7 @@ class ProviderRegistry:
 
     def get(self, name: str | None = None) -> BaseModelProvider:
         if name is None:
-            name = "unavailable"
+            name = self._settings.ai_provider
         provider_cls = self._providers.get(name, UnavailableProvider)
         return provider_cls(self._settings)
 

@@ -1,6 +1,8 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from typing import Literal
+
+from pydantic import SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,8 +23,12 @@ class Settings(BaseSettings):
 
     # AI provider keys are optional and never defaulted to real values.
     ollama_base_url: str | None = None
-    openai_api_key: str | None = None
-    anthropic_api_key: str | None = None
+    openai_api_key: SecretStr | None = None
+    ai_provider: Literal["unavailable", "openai"] = "unavailable"
+    openai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    ai_max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+    anthropic_api_key: SecretStr | None = None
 
     # Local owner token for the self-hosted MVP owner-authentication flow.
     # In production this must be overridden via environment variable.
