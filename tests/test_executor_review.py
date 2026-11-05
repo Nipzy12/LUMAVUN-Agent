@@ -150,36 +150,74 @@ async def test_unavailable_preserves_approval_and_task(file_client, settings):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('outcome', ['error', 'timeout', 'empty', 'cancel'])
+@pytest.mark.parametrize('outcome', ['error', 'timeout', 'empty', 'cancel', 'cancel_error', 'cancel_timeout'])
 async def test_failure_and_cancellation_audit(file_client, outcome):
     client, sessions = file_client
     tid, aid = await seed(client)
+    cancelling = outcome.startswith('cancel')
+    entered, release = asyncio.Event(), asyncio.Event()
+
     async def chat(prompt):
+        entered.set()
+        if cancelling:
+            # The test drives the real PATCH from outside this provider call.
+            # Its assertions must not be swallowed by the executor's error handling.
+            await release.wait()
+            if outcome == 'cancel_error':
+                raise RuntimeError('Bearer TOP-SECRET late provider error')
+            if outcome == 'cancel_timeout':
+                raise TimeoutError('Late provider timeout')
+            return ProviderResponse('discard this result')
         if outcome == 'error':
             raise RuntimeError('Bearer TOP-SECRET raw provider body')
         if outcome == 'timeout':
-            await asyncio.sleep(10)
-        if outcome == 'cancel':
-            assert (await client.patch(f'/api/tasks/{tid}', json={'status': 'cancelled'})).status_code == 200
-            return ProviderResponse('discard this result')
+            # A real wait_for timeout, without a timing-dependent sleep.
+            await release.wait()
         return ProviderResponse('')
+
     provider = Mock(is_available=True, chat=AsyncMock(side_effect=chat))
     app.dependency_overrides[get_execution_provider] = lambda: provider
-    with patch('luma_core.agents.executor.get_settings', return_value=Settings(_env_file=None, ai_timeout_seconds=0.1)):
-        response = await client.post(f'/api/tasks/{tid}/execute', json={'approval_id': aid})
+    # Cancellation includes ASGI dispatch + independent SQLite I/O. A 100ms budget
+    # incorrectly turned slow Windows cancellation into an execution timeout.
+    settings = Settings(_env_file=None, ai_timeout_seconds=0.1 if outcome == 'timeout' else 30)
+    with patch('luma_core.agents.executor.get_settings', return_value=settings):
+        job = asyncio.create_task(client.post(f'/api/tasks/{tid}/execute', json={'approval_id': aid}))
+        if cancelling:
+            try:
+                await asyncio.wait_for(entered.wait(), 30)
+                cancelled = await client.patch(f'/api/tasks/{tid}', json={'status': 'cancelled'})
+                assert cancelled.status_code == 200, cancelled.text
+                assert cancelled.json()['status'] == 'cancelled'
+                async with sessions() as session:
+                    saved = await session.get(Task, tid)
+                    assert saved.status.value == 'cancelled'
+            finally:
+                # Always release and drain the execute request before fixture teardown.
+                release.set()
+                response = await job
+        else:
+            response = await job
     assert response.status_code == 200
     data = response.json()
-    assert data['status'] == ('cancelled' if outcome == 'cancel' else 'failed')
+    assert data['status'] == ('cancelled' if cancelling else 'failed')
     assert data['result'] is None
     audit = (await client.get('/api/audit-events')).json()
     assert 'TOP-SECRET' not in str(data) + str(audit)
     actions = [e['action'] for e in audit['items']]
-    assert 'task_execution_started' in actions
-    assert ('task_execution_discarded' if outcome == 'cancel' else 'task_execution_failed') in actions
+    assert actions.count('task_execution_started') == 1
+    assert actions.count('task_execution_discarded' if cancelling else 'task_execution_failed') == 1
+    assert 'task_execution_completed' not in actions
+    if cancelling:
+        assert 'task_execution_failed' not in actions
+        assert data['error'] is None
+    provider.chat.assert_awaited_once()
     async with sessions() as session:
         saved = await session.get(Task, tid)
         assert saved.status.value == data['status']
+        assert saved.result is None
         assert saved.error == data['error']
+        consumed = await session.get(ApprovalRequest, aid)
+        assert consumed.status.value == 'cancelled'
 
 
 @pytest.mark.asyncio

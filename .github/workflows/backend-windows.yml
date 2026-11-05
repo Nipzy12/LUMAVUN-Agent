@@ -1,0 +1,36 @@
+name: Windows backend regression tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - hotfix/windows-cancellation-regression
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.15']
+    env:
+      APP_DEBUG: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install project test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Select disposable database location
+        shell: pwsh
+        run: |
+          $testDatabase = (Join-Path $env:RUNNER_TEMP 'luma-ci-unused.db').Replace('\', '/')
+          "DATABASE_URL=sqlite:///$testDatabase" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run all backend tests
+        run: python -m pytest -ra
