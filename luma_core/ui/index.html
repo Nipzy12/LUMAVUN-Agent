@@ -12,10 +12,11 @@
   <div class="shell">
     <aside class="sidebar" id="sidebar" aria-label="Navigasi samping">
       <div class="brand"><div class="brand-icon" aria-hidden="true">L</div><div><strong>Luma Office</strong><small>AI Workspace · Local</small></div></div>
-      <button class="sidebar-create" id="newTaskBtn"><span aria-hidden="true">＋</span> Tugas baru</button>
+      <button class="sidebar-create" id="newTaskBtn"><span aria-hidden="true">＋</span> Chat baru</button>
       <div class="sidebar-caption">RUANG KERJA</div>
       <button class="side-link active" id="sideChat" data-view="chat"><span aria-hidden="true">◫</span> Chat <span class="side-short">01</span></button>
       <button class="side-link" id="sideWork" data-view="work"><span aria-hidden="true">▦</span> Work <span class="side-short">02</span></button>
+      <label class="sr-only" for="conversationSearch">Cari percakapan</label><input id="conversationSearch" type="search" placeholder="Cari percakapan…">
       <div class="sidebar-caption history-caption">PERCAKAPAN <button class="tiny-action" id="refreshSide" title="Muat ulang">↻</button></div>
       <div class="history-list" id="historyList"><div class="muted-small">Sambungkan owner untuk melihat percakapan.</div></div>
       <div class="sidebar-foot">
@@ -26,7 +27,7 @@
 
     <div class="workspace">
       <header class="topbar">
-        <button class="mobile-menu" id="menuToggle" aria-label="Tampilkan menu">☰</button>
+        <button class="mobile-menu" id="menuToggle" aria-label="Buka atau tutup sidebar" aria-controls="sidebar" aria-expanded="true">☰</button>
         <div class="tabs" role="tablist" aria-label="Mode Luma Office">
           <button class="tab active" id="tabChat" role="tab" aria-selected="true" data-view="chat">Chat</button>
           <button class="tab" id="tabWork" role="tab" aria-selected="false" data-view="work">Work</button>
@@ -39,9 +40,9 @@
           <div class="chat-content" id="chatContent">
             <div class="chat-welcome" id="chatWelcome">
               <div class="welcome-mark" aria-hidden="true">✳</div>
-              <span class="eyebrow">LUMA CHAT · PHASE 3.2</span>
-              <h1>Apa yang ingin Luma<br><em>kerjakan hari ini?</em></h1>
-              <p>Tulis tugas, tinjau persetujuan, lalu jalankan dengan AI cloud. Semua langkah tetap di bawah kendalimu.</p>
+              <span class="eyebrow">LUMA CHAT</span>
+              <h1>Apa yang ingin Luma<br><em>bicarakan hari ini?</em></h1>
+              <p>Mulai percakapan dengan Luma. Untuk pekerjaan agent dan persetujuan, buka Work.</p>
               <div class="suggestions">
                 <button class="suggest" data-prompt="Buat contoh struktur API FastAPI untuk aplikasi catatan sederhana."><span>◇</span> Rancang API FastAPI</button>
                 <button class="suggest" data-prompt="Tulis contoh fungsi Python yang memvalidasi alamat email."><span>⌘</span> Contoh kode Python</button>
@@ -54,17 +55,17 @@
           <div class="composer-wrap">
             <form class="composer" id="composerForm">
               <label class="sr-only" for="promptInput">Tuliskan tugas</label>
-              <textarea id="promptInput" rows="2" maxlength="512" autocomplete="off" placeholder="Tulis tugas untuk Luma Office…" required></textarea>
-              <div class="composer-bottom"><div class="composer-meta"><span class="sparkle" aria-hidden="true">✧</span><label for="jobTypeSelect">Tim</label><select id="jobTypeSelect" aria-label="Jenis pekerjaan"><option value="web developer">Web Developer</option><option value="backend engineer">Backend Engineer</option><option value="video editor">Video Editor</option><option value="graphic designer">Graphic Designer</option><option value="content writer">Content Writer</option></select><span class="composer-hint">Satu pesan = satu task</span></div><button type="submit" id="sendBtn" class="send-btn" aria-label="Buat tugas">↑</button></div>
+              <textarea id="promptInput" rows="2" maxlength="512" autocomplete="off" placeholder="Tanya Luma…" required></textarea>
+              <div id="attachmentPreview" role="status"></div><div class="composer-bottom"><div class="chat-options"><button id="attachBtn" type="button" aria-label="Tambah lampiran" aria-expanded="false">＋</button><div id="attachMenu" hidden><button type="button" id="uploadImage">Upload image</button><button type="button" id="uploadDocument">Upload document</button></div><input type="file" id="attachmentInput" hidden><label for="usageLevel" class="sr-only">AI usage level</label><select id="usageLevel"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div><div class="composer-meta"><span class="sparkle" aria-hidden="true">✧</span><label for="jobTypeSelect">Tim</label><select id="jobTypeSelect" aria-label="Jenis pekerjaan"><option value="web developer">Web Developer</option><option value="backend engineer">Backend Engineer</option><option value="video editor">Video Editor</option><option value="graphic designer">Graphic Designer</option><option value="content writer">Content Writer</option></select><span class="composer-hint">Work: satu pesan = satu task</span></div><button type="submit" id="sendBtn" class="send-btn" aria-label="Kirim pesan">↑</button></div>
             </form>
             <div class="composer-note" id="composerStatus" role="status"></div>
-            <div class="composer-note">AI tidak dijalankan otomatis. Owner harus memberi approval untuk setiap task.</div>
+            <div class="composer-note">Chat hanya menghasilkan teks. Tindakan agent tetap memerlukan approval di Work.</div>
           </div>
         </section>
 
         <section class="view work-view" id="workView" aria-label="Luma Work">
           <div class="work-inner">
-            <div class="work-heading"><div><div class="eyebrow">LUMA WORK · AGENT OPERATIONS</div><h1>Tim AI milikmu,<br><em>dalam satu ruang.</em></h1><p>Kelola agent, periksa task, dan tentukan pekerjaan mana yang boleh dijalankan.</p></div><div class="work-actions"><button class="btn secondary" id="workRefresh">↻ Segarkan</button><button class="btn primary" id="createAgentBtn">＋ Buat agent</button></div></div>
+            <div class="work-heading"><div><div class="eyebrow">LUMA WORK · AGENT OPERATIONS</div><h1>Tim AI milikmu,<br><em>dalam satu ruang.</em></h1><p>Kelola agent, periksa task, dan tentukan pekerjaan mana yang boleh dijalankan.</p></div><div class="work-actions"><button class="btn secondary" id="workTaskBtn">＋ Buat task</button><button class="btn secondary" id="workRefresh">↻ Segarkan</button><button class="btn primary" id="createAgentBtn">＋ Buat agent</button></div></div>
             <div class="stats" id="stats"><div class="stat"><small>Agent</small><strong id="statAgents">—</strong><span>Worker + manager</span></div><div class="stat"><small>Departemen</small><strong id="statDepartments">—</strong><span>Unit kerja</span></div><div class="stat"><small>Task aktif</small><strong id="statTasks">—</strong><span>Pending / assigned / running</span></div><div class="stat"><small>Approval</small><strong id="statApprovals">—</strong><span>Menunggu keputusan</span></div></div>
             <div class="work-section-title"><h2>Agent & departemen</h2><span>Registry aktif</span></div>
             <div class="team-grid" id="teamGrid"><div class="empty-card">Memuat tim…</div></div>

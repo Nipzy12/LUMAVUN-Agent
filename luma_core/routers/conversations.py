@@ -118,6 +118,10 @@ async def add_user_message(conversation_id: UUID, payload: UserMessageInput,
     ).values(updated_at=now()))
     if changed.rowcount != 1:
         raise HTTPException(404, 'Conversation not found')
+    from luma_core.models import ChatRequest
+    if await session.scalar(select(ChatRequest.id).where(
+            ChatRequest.conversation_id == str(conversation_id), ChatRequest.status == 'running')):
+        raise HTTPException(409, 'Conversation has an active chat request')
     content = redact_secrets(payload.content, get_settings())
     job_type = redact_secrets(payload.job_type, get_settings()) if payload.job_type else None
     existing = await session.scalar(select(ConversationMessage).where(

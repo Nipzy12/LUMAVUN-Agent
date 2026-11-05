@@ -1,6 +1,8 @@
 /* Luma Office: same-origin APIs, text-only rendering, tab-memory credentials. */
 'use strict';
 const $ = (id) => document.getElementById(id);
+let workComposer = false;
+let pendingAttachments = [];
 const state = {
   view: 'chat', token: '', authVersion: 0, refreshVersion: 0, selectionVersion: 0,
   selectedTask: null, conversationId: null, conversation: null, messages: [],
@@ -21,6 +23,7 @@ function showToast(message, error = false) {
   showToast.timer = setTimeout(() => { toast.hidden = true; }, 5000);
 }
 function clearPrivateState() {
+  pendingAttachments = []; renderAttachments();
   state.authVersion++; state.refreshVersion++; state.selectionVersion++;
   state.selectedTask = null; state.conversationId = null; state.conversation = null;
   state.messages = []; state.conversations = []; state.pendingSend = null;
@@ -103,7 +106,7 @@ function renderHistory() {
   const list = $('historyList'); empty(list);
   if (!state.token) { append(list, element('div', 'muted-small', 'Sambungkan owner untuk melihat percakapan.')); return; }
   if (!state.conversations.length) { append(list, element('div', 'muted-small', 'Belum ada percakapan.')); return; }
-  for (const conversation of state.conversations) {
+  for (const conversation of state.conversations.filter(c => c.title.toLowerCase().includes(($('conversationSearch').value || '').toLowerCase()))) {
     const item = element('button', 'history-item' + (state.conversationId === conversation.id ? ' selected' : ''));
     item.type = 'button'; item.disabled = state.busy; item.dataset.conversationId = conversation.id;
     append(item, element('span', '', conversation.title), element('span', 'history-status', new Date(conversation.updated_at).toLocaleString()));
@@ -137,8 +140,8 @@ function taskActions(task, root) {
 }
 function renderChat() {
   const welcome = $('chatWelcome'); const thread = $('chatThread');
-  const task = selectedTask(); const hasThread = Boolean(state.conversationId || task);
-  welcome.hidden = hasThread; thread.hidden = !hasThread;
+  const task = selectedTask(); const hasThread = Boolean(state.messages.length || task);
+  $('chatView').classList.toggle('empty-chat', !hasThread); welcome.hidden = hasThread; thread.hidden = !hasThread;
   $('conversationBar').hidden = !state.conversationId;
   $('conversationTitle').textContent = state.conversation?.title || 'Percakapan baru';
   empty(thread);
@@ -350,6 +353,8 @@ async function createConversation(title = 'Percakapan baru') {
   selectConversation(conversation.id); return conversation;
 }
 async function resetChat() {
+  $('promptInput').placeholder = 'Tanya Luma…';
+  workComposer = false; document.body.classList.remove('work-composer'); pendingAttachments = []; renderAttachments();
   await withAction(() => createConversation(), 'Percakapan baru dibuat.'); $('promptInput').focus();
 }
 function messageId() {
@@ -367,13 +372,15 @@ $('composerForm').addEventListener('submit', async (event) => {
     requireOwner();
     if (!state.conversationId) { await createConversation(text.slice(0, 80)); $('promptInput').value = text; }
     const old = state.pendingSend;
-    if (!old || old.conversationId !== state.conversationId || old.payload.content !== text || old.payload.job_type !== jobType) {
-      state.pendingSend = {conversationId: state.conversationId, payload: {client_message_id: messageId(), content: text, job_type: jobType}};
+    if (!old || old.conversationId !== state.conversationId || old.payload.content !== text || old.payload.level !== $('usageLevel').value || old.payload.work !== workComposer || (!workComposer && JSON.stringify(old.payload.attachments) !== JSON.stringify(pendingAttachments.map(a => a.id)))) {
+      state.pendingSend = {conversationId: state.conversationId, payload: {client_message_id: messageId(), content: text, ...(workComposer ? {job_type: jobType} : {level: $('usageLevel').value, attachments: pendingAttachments.map(a => a.id)}), work: workComposer}};
     }
     const pending = state.pendingSend;
-    await api('POST', `/api/conversations/${pending.conversationId}/messages`, pending.payload);
+    const {work, ...payload} = pending.payload;
+    await api('POST', work ? `/api/conversations/${pending.conversationId}/messages` : `/api/chat/conversations/${pending.conversationId}/messages`, payload);
+    pendingAttachments = []; renderAttachments();
     state.pendingSend = null; $('promptInput').value = '';
-  }, 'Pesan tersimpan. Periksa penugasan dan approval.');
+  }, 'Pesan tersimpan.');
 });
 $('promptInput').addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); $('composerForm').requestSubmit(); }
@@ -387,7 +394,7 @@ $('renameConversationBtn').addEventListener('click', () => {
 });
 $('refreshSide').addEventListener('click', refreshAll);
 $('workRefresh').addEventListener('click', refreshAll);
-$('menuToggle').addEventListener('click', () => $('sidebar').classList.toggle('open'));
+$('menuToggle').addEventListener('click', toggleSidebar);
 $('connectBtn').addEventListener('click', () => { $('ownerTokenInput').value = ''; $('tokenDialog').showModal(); });
 $('tokenDialog').addEventListener('close', () => { $('ownerTokenInput').value = ''; });
 $('tokenForm').addEventListener('submit', async (event) => {
@@ -414,3 +421,51 @@ $('agentForm').addEventListener('submit', async (event) => {
 window.addEventListener('pagehide', () => disconnect(false));
 setInterval(() => { if (state.token && !state.busy && !document.hidden) refreshAll(); }, 5000);
 renderAll(); refreshHealth();
+
+function toggleSidebar() {
+  const collapsed = !document.body.classList.contains('sidebar-collapsed');
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  $('menuToggle').setAttribute('aria-expanded', String(!collapsed));
+  try { localStorage.setItem('luma.sidebarCollapsed', String(collapsed)); } catch (_) {}
+}
+try {
+  if (localStorage.getItem('luma.sidebarCollapsed') === 'true' || innerWidth < 760) {
+    document.body.classList.add('sidebar-collapsed'); $('menuToggle').setAttribute('aria-expanded', 'false');
+  }
+  const level = localStorage.getItem('luma.usageLevel');
+  if (['low', 'medium', 'high'].includes(level)) $('usageLevel').value = level;
+} catch (_) {}
+document.addEventListener('keydown', event => {
+  if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); toggleSidebar(); }
+});
+$('conversationSearch').addEventListener('input', renderHistory);
+$('usageLevel').addEventListener('change', () => { try { localStorage.setItem('luma.usageLevel', $('usageLevel').value); } catch (_) {} });
+$('workTaskBtn').addEventListener('click', async () => {
+  await resetChat(); workComposer = true; document.body.classList.add('work-composer');
+  switchView('chat'); $('promptInput').placeholder = 'Tulis task untuk agent (approval diperlukan)…';
+});
+function renderAttachments() {
+  const preview = $('attachmentPreview'); preview.replaceChildren();
+  pendingAttachments.forEach((attachment, index) => {
+    const row = element('div', 'attachment-item', attachment.name + (attachment.preview ? ': ' + attachment.preview : ''));
+    if (attachment.imagePreview) { const image = document.createElement('img'); image.src = attachment.imagePreview; image.alt = attachment.name; image.width = 80; row.append(image); }
+    row.append(button('Remove', () => { pendingAttachments.splice(index, 1); renderAttachments(); }));
+    preview.append(row);
+  });
+}
+$('attachBtn').addEventListener('click', () => { $('attachMenu').hidden = !$('attachMenu').hidden; $('attachBtn').setAttribute('aria-expanded', String(!$('attachMenu').hidden)); });
+for (const [id, accept] of [['uploadImage', 'image/png,image/jpeg,image/webp'], ['uploadDocument', '.txt,.pdf']]) {
+  $(id).addEventListener('click', () => { $('attachmentInput').accept = accept; $('attachmentInput').click(); $('attachMenu').hidden = true; });
+}
+$('attachmentInput').addEventListener('change', async () => {
+  const file = $('attachmentInput').files[0]; if (!file) return;
+  const auth = state.authVersion;
+  try {
+    requireOwner(); if (pendingAttachments.length >= 3 || file.size > 4 * 1024 * 1024) throw new Error('Maksimal 3 lampiran, 4 MiB per file.');
+    const response = await fetch('/api/chat/attachments', {method: 'POST', headers: {'X-Luma-Owner-Token': state.token, 'Content-Type': file.type || 'text/plain', 'X-File-Name': encodeURIComponent(file.name)}, body: file, cache: 'no-store'});
+    const data = await response.json(); if (auth !== state.authVersion) return;
+    if (!response.ok) throw new Error(apiErrorBody(data)); if (data.kind.startsWith('image/')) { const reader = new FileReader(); reader.onload = () => { if (auth === state.authVersion && pendingAttachments.includes(data)) {data.imagePreview = reader.result; renderAttachments();} }; reader.readAsDataURL(file); }
+    pendingAttachments.push(data); renderAttachments();
+  } catch (error) { if (auth === state.authVersion) showToast(error.message, true); }
+  finally { $('attachmentInput').value = ''; }
+});

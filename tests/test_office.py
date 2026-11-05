@@ -13,7 +13,7 @@ from luma_core.ui import mount_office_ui
 async def test_office_served_automatically(client, path):
     response = await client.get(path)
     assert response.status_code == 200
-    assert 'Tugas baru' in response.text and 'PERCAKAPAN' in response.text
+    assert 'Chat baru' in response.text and 'PERCAKAPAN' in response.text
     assert 'maxlength="512"' in response.text
     assert response.headers['cache-control'] == 'no-store'
     assert "frame-ancestors 'none'" in response.headers['content-security-policy']

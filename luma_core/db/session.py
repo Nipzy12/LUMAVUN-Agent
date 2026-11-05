@@ -25,6 +25,7 @@ _ENGINE_URL = _normalize_database_url(settings.database_url)
 engine = create_async_engine(
     _ENGINE_URL,
     echo=settings.database_url_echo,
+    hide_parameters=True,  # Debug SQL must not print private message/token values.
     poolclass=StaticPool if _ENGINE_URL in {"sqlite+aiosqlite://", "sqlite+aiosqlite:///:memory:"} else None,
 )
 

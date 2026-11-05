@@ -14,14 +14,15 @@ class OpenRouterProvider(BaseModelProvider):
     async def chat(self, prompt: TaskPrompt | str, **kwargs: object) -> ProviderResponse:
         if not self.is_available:
             raise RuntimeError("Cloud provider is not configured")
+        model = kwargs.get("model", self.settings.openrouter_model)
         try:
             async with httpx.AsyncClient(timeout=self.settings.ai_timeout_seconds) as client:
                 response = await client.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={"Authorization": f"Bearer {self.settings.openrouter_api_key.get_secret_value()}"},
-                    json={"model": self.settings.openrouter_model,
+                    json={"model": model,
                           "messages": provider_messages(prompt, self.settings),
-                          "max_tokens": self.settings.ai_max_output_tokens},
+                          "max_tokens": kwargs.get("max_tokens", self.settings.ai_max_output_tokens)},
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -31,7 +32,7 @@ class OpenRouterProvider(BaseModelProvider):
                 if not isinstance(text, str) or not text.strip():
                     raise ValueError("Empty response")
                 text = redact_secrets(text, self.settings)
-                return ProviderResponse(text=text, model=self.settings.openrouter_model)
+                return ProviderResponse(text=text, model=redact_secrets(str(model), self.settings))
         except Exception:
             # Never expose response bodies, headers, keys, or raw transport errors.
             raise RuntimeError("Cloud provider request failed") from None

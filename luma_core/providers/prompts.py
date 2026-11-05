@@ -19,6 +19,8 @@ def redact_secrets(text: str, settings: Settings) -> str:
 
 
 def provider_messages(prompt: TaskPrompt | str, settings: Settings) -> list[dict[str, str]]:
+    if hasattr(prompt, 'provider_messages'):
+        return prompt.provider_messages(settings)
     # Preserve the original string calling convention for existing integrations.
     if isinstance(prompt, str):
         prompt = TaskPrompt(prompt)

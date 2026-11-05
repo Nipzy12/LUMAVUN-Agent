@@ -30,4 +30,12 @@ class FakeProvider:
 if __name__ == '__main__':
     # Only this explicitly launched test process installs the mock dependency.
     app.dependency_overrides[get_execution_provider] = FakeProvider
+    from luma_core.routers import chat
+    class DirectFake:
+        is_available = True
+        async def chat(self, prompt, **kwargs):
+            return ProviderResponse('Aurora' if 'Aurora' in str(prompt.messages) else 'Direct answer')
+    class Registry:
+        def get(self): return DirectFake()
+    chat.create_registry = lambda settings: Registry()
     uvicorn.run(app, host='127.0.0.1', port=int(os.environ['LUMA_UI_TEST_PORT']), access_log=False)

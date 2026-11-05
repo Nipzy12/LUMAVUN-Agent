@@ -621,3 +621,139 @@ The browser checks cover two-turn recall, explicit approvals, refresh/restart,
 private-read authentication, message pagination, lost-response/double-send recovery,
 cancellation, Work actions, text-only output rendering, invalid tokens and stale
 responses after logout. A screenshot can be saved by setting `LUMA_UI_ARTIFACT_DIR`.
+
+## Phase 3.2.1 — separate Chat and Work
+
+Ordinary **Chat** is authenticated, persistent text generation. Sending is an explicit
+request to the configured cloud model; it creates no task or approval. **Work →
+Buat task** opens the governed task composer. Work still requires task-specific
+approval before executing an assigned task. Existing conversation-linked tasks,
+agent management, cancellation, audit, and results remain available.
+
+The sidebar supports search within loaded conversations, a visible toggle and
+Ctrl+Shift+S (when not intercepted by the browser). Only sidebar visibility and
+Low/Medium/High preferences enter localStorage. Tokens remain in tab memory;
+reconnect after refreshing. The empty Chat composer is centered; active histories
+use the bottom composer. Work task controls remain visibly labeled.
+
+### Direct Chat API and limits
+
+All `/api/chat/**` routes require `X-Luma-Owner-Token`, including attachment reads.
+Create a conversation with `POST /api/conversations`, then send
+`POST /api/chat/conversations/{id}/messages` with:
+
+```json
+{"client_message_id":"a unique UUID", "content":"Reply only LUMA_SMOKE_OK", "level":"medium", "attachments":[]}
+```
+
+The client must reuse the same UUID and payload when reconciling an uncertain
+submission. Completed requests replay without another provider call; running and
+failed attempts return 409. At most one active request/task per conversation and
+three active direct requests per owner are permitted. Messages are limited to 512
+characters, bounded history uses the Phase 3.2 limits, and provider calls use
+`AI_TIMEOUT_SECONDS` with no automatic retry. Failed requests retain the user
+message but never fabricate an assistant response. Private responses disable caching.
+
+Each provider has configurable `OPENAI_CHAT_{LOW,MEDIUM,HIGH}_MODEL` or
+`OPENROUTER_CHAT_{LOW,MEDIUM,HIGH}_MODEL` mappings; blank mappings use the existing
+provider model. Output budgets use `CHAT_{LOW,MEDIUM,HIGH}_TOKENS`. Medium is the
+initial default. Levels do not guarantee intelligence or cost: these depend on
+the chosen model. No reasoning-effort parameters are sent, ensuring compatibility
+with models that do not support them. Work provider settings remain unchanged.
+
+### Attachments
+
+The plus menu uploads real files to authenticated `POST /api/chat/attachments`
+(raw request body, Content-Type, X-File-Name). The returned UUID can be attached to
+a message; authenticated `GET /api/chat/attachments/{uuid}` retrieves it. Limit:
+three files per request, 4 MiB per file. Supported: validated PNG/JPEG/WebP
+(maximum 16 million pixels), UTF-8 TXT, and text PDFs (maximum 30 pages and 20,000
+extracted characters per document). Encrypted/scanned-only PDFs, OCR, audio,
+video and other formats are unsupported. PDFs are parsed as text, never executed.
+Image support is explicitly allowlisted by exact model ID in `CHAT_IMAGE_MODELS`;
+misconfigured/unsupported remote models produce a sanitized provider failure.
+Images use inline data URLs sent only to the selected provider. Text documents
+are redacted and stored as extracted text, not original files. Images are stored
+under random UUIDs in `CHAT_ATTACHMENT_DIR`, never under user-supplied paths and
+never mounted as static content. Unsent attachments can be removed from the
+composer; unused uploads can be cleaned with the owner-only retention endpoint below.
+Do not expose the upload directory or database, which contain private material.
+
+Additive startup creates `chat_requests` and `chat_attachments` without altering
+existing tables. Back up the SQLite file and upload directory together when the
+server is stopped. A process crash after claiming a request can leave it running;
+there is deliberately no automatic retry/recovery that could cause another paid
+call. Inspect history and use a new conversation after stopping the old process.
+Image contents cannot be semantically scanned for secrets; inspect files before
+uploading. Historical image bytes are not resent on follow-ups; document text and
+text exchanges are included within the configured context bounds.
+
+### Windows 10 CMD verification
+
+From the project folder with the server stopped:
+
+```bat
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000
+```
+
+Keep your existing `.env` and database. Add the optional settings from
+`.env.example`, configure your provider privately, and open
+`http://127.0.0.1:8000/office`. Connect the owner token. In Chat send
+“Remember the project name Aurora”, then “What is the project name?”; there should
+be two answers and no new Work tasks. Refresh, reconnect, and reopen the history.
+Try a small TXT and an image with a supported vision model, removing an attachment
+before sending. Compare the usage levels after configuring distinct model mappings.
+In Work create a task, confirm it remains assigned, then explicitly request,
+approve, and execute it. Toggle the sidebar by button and shortcut; test a narrow
+window. Real provider requests incur provider charges.
+
+Optional browser tests require Python Playwright and Chromium (development only):
+`python tests/browser_office.py`. All automated AI responses are mocked; tests use
+disposable databases. No production Node/React runtime is needed.
+
+
+### PR #1 corrections: model metadata, retention and parser budgets
+
+OpenAI/OpenRouter `ProviderResponse.model` now reports the selected preset model
+sent in the request (with configured-secret redaction), rather than the default
+model. This identifies the requested model, not a provider-resolved version alias.
+
+An explicit owner-authenticated `POST /api/chat/attachments/cleanup` removes unused
+attachments older than `CHAT_ATTACHMENT_TTL_HOURS` (default 24). It never expires
+an attachment with a conversation link, even if the conversation metadata is
+missing. The additive `chat_attachment_retention` table records new upload times;
+older unlinked records without timestamps receive a fresh grace period on their
+first cleanup. No legacy table columns or data are rewritten at startup.
+Cleanup also removes old UUID-named regular files with no database record,
+checking records for every owner; recent files, symlinks, non-UUID filenames and
+other owners' attachment rows are retained. Keep this storage directory dedicated
+to the application. Upload, binding and cleanup are serialized with SQLite writer
+locks. Failed file deletions keep the row for a later retry. Removed pending
+attachments still remain server-side until they expire and cleanup is requested.
+There is no automatic scheduler and linked attachments have no expiration policy.
+
+For Windows CMD, with the server running and a private owner token available:
+
+```bat
+curl -X POST http://127.0.0.1:8000/api/chat/attachments/cleanup -H "X-Luma-Owner-Token: %LOCAL_OWNER_TOKEN%"
+```
+
+The command reports expired-row and orphan-file deletion counts. Cleanup can be
+run periodically by the owner; it requires no AI provider and makes no AI call.
+Do not run it against a user database during automated testing.
+
+PDF/image validation now runs in a fixed Python parser subprocess rather than
+blocking the API event loop. There are two active parsers per server process,
+an 8-second wall timeout with worker termination/reaping, the existing 4 MiB
+input cap, 30 PDF pages, incremental 20,000-character text limits and 4 MiB PDF
+stream-decompression/work limits (pypdf >=6.21.4). Image verification includes
+actual decoding and rejects animation, corruption and images above 16 million
+pixels. On POSIX workers also enforce 512 MiB address-space and 6-second CPU
+limits. Windows supports subprocess isolation and wall timeout but does not
+currently impose an OS-level hard memory cap; parser allocations can briefly
+exceed input/decoded-content bounds. This mitigates resource exhaustion, not a
+full hostile-file sandbox. No OCR, image-secret recognition or metadata stripping
+is added. Broad public upload access still requires further operational controls.

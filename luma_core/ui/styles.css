@@ -6,3 +6,26 @@
 
 /* Persistent conversations retain the existing lightweight layout. */
 [hidden]{display:none!important}.conversation-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 auto 1rem;max-width:850px}.conversation-bar h2{font-size:1rem;overflow-wrap:anywhere}.task-panel{padding:1rem;border:1px solid #e5e5e2;border-radius:16px;margin:1rem 0}.toast.error{background:#934d55}.message .result{white-space:pre-wrap;overflow-wrap:anywhere}.history-item:disabled{opacity:.6}
+
+/* Phase 3.2.1: quiet conversation surface, explicit Work composer. */
+.mobile-menu {display:inline-flex!important; align-items:center;justify-content:center}
+body.sidebar-collapsed .sidebar {display:none!important}
+body.sidebar-collapsed .shell {grid-template-columns:1fr}
+body.sidebar-collapsed .workspace {width:100%;margin-left:0}
+#conversationSearch {width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;padding:9px;background:transparent}
+.chat-options {display:flex;gap:8px;align-items:center;position:relative}
+.chat-options button,.chat-options select {border:1px solid #ddd;border-radius:12px;background:#fff;padding:6px 10px;color:#353c39}
+#attachMenu {position:absolute;bottom:45px;left:0;background:#fff;padding:8px;box-shadow:0 4px 24px #0002;border-radius:12px;min-width:170px;z-index:4}
+#attachMenu button {display:block;width:100%;margin:4px 0}
+.composer-meta {display:none!important}
+.work-composer .composer-meta {display:flex!important}
+.work-composer .chat-options {display:none}
+.attachment-item {max-height:90px;overflow:auto;font-size:12px;padding:8px;background:#f0f2ed;border-radius:8px;margin-bottom:5px;white-space:pre-wrap}
+.empty-chat .chat-content {flex:0;padding-top:12vh}
+.empty-chat .composer-wrap {margin-top:10px;margin-bottom:auto}
+.chat-welcome h1 {font-size:34px}
+.chat-welcome .suggestions {display:none}
+button:focus-visible,select:focus-visible,input:focus-visible {outline:2px solid #337f69;outline-offset:3px}
+@media(max-width:760px) {body:not(.sidebar-collapsed) .sidebar {display:flex;position:fixed;inset:65px auto 0 0;width:min(280px,85vw);z-index:20;background:#f7f8f4;box-shadow:5px 0 20px #0002}.workspace {width:100%}.empty-chat .chat-content {padding-top:7vh}.composer-bottom {flex-wrap:wrap}}
+
+.topbar .mobile-menu {position:absolute;left:16px;top:20px;border:0;background:transparent;font-size:22px}
