@@ -676,7 +676,7 @@ Images use inline data URLs sent only to the selected provider. Text documents
 are redacted and stored as extracted text, not original files. Images are stored
 under random UUIDs in `CHAT_ATTACHMENT_DIR`, never under user-supplied paths and
 never mounted as static content. Unsent attachments can be removed from the
-composer; uploaded files currently require administrative retention/cleanup.
+composer; unused uploads can be cleaned with the owner-only retention endpoint below.
 Do not expose the upload directory or database, which contain private material.
 
 Additive startup creates `chat_requests` and `chat_attachments` without altering
@@ -713,3 +713,47 @@ window. Real provider requests incur provider charges.
 Optional browser tests require Python Playwright and Chromium (development only):
 `python tests/browser_office.py`. All automated AI responses are mocked; tests use
 disposable databases. No production Node/React runtime is needed.
+
+
+### PR #1 corrections: model metadata, retention and parser budgets
+
+OpenAI/OpenRouter `ProviderResponse.model` now reports the selected preset model
+sent in the request (with configured-secret redaction), rather than the default
+model. This identifies the requested model, not a provider-resolved version alias.
+
+An explicit owner-authenticated `POST /api/chat/attachments/cleanup` removes unused
+attachments older than `CHAT_ATTACHMENT_TTL_HOURS` (default 24). It never expires
+an attachment with a conversation link, even if the conversation metadata is
+missing. The additive `chat_attachment_retention` table records new upload times;
+older unlinked records without timestamps receive a fresh grace period on their
+first cleanup. No legacy table columns or data are rewritten at startup.
+Cleanup also removes old UUID-named regular files with no database record,
+checking records for every owner; recent files, symlinks, non-UUID filenames and
+other owners' attachment rows are retained. Keep this storage directory dedicated
+to the application. Upload, binding and cleanup are serialized with SQLite writer
+locks. Failed file deletions keep the row for a later retry. Removed pending
+attachments still remain server-side until they expire and cleanup is requested.
+There is no automatic scheduler and linked attachments have no expiration policy.
+
+For Windows CMD, with the server running and a private owner token available:
+
+```bat
+curl -X POST http://127.0.0.1:8000/api/chat/attachments/cleanup -H "X-Luma-Owner-Token: %LOCAL_OWNER_TOKEN%"
+```
+
+The command reports expired-row and orphan-file deletion counts. Cleanup can be
+run periodically by the owner; it requires no AI provider and makes no AI call.
+Do not run it against a user database during automated testing.
+
+PDF/image validation now runs in a fixed Python parser subprocess rather than
+blocking the API event loop. There are two active parsers per server process,
+an 8-second wall timeout with worker termination/reaping, the existing 4 MiB
+input cap, 30 PDF pages, incremental 20,000-character text limits and 4 MiB PDF
+stream-decompression/work limits (pypdf >=6.21.4). Image verification includes
+actual decoding and rejects animation, corruption and images above 16 million
+pixels. On POSIX workers also enforce 512 MiB address-space and 6-second CPU
+limits. Windows supports subprocess isolation and wall timeout but does not
+currently impose an OS-level hard memory cap; parser allocations can briefly
+exceed input/decoded-content bounds. This mitigates resource exhaustion, not a
+full hostile-file sandbox. No OCR, image-secret recognition or metadata stripping
+is added. Broad public upload access still requires further operational controls.

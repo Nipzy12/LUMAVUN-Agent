@@ -22,7 +22,7 @@ from luma_core.models import (Agent, AgentType, AgentStatus, Department, Departm
 async def test_additive_migration_preserves_all_legacy_rows_and_restart(tmp_path):
     path = tmp_path / 'legacy.db'
     engine = create_async_engine(f'sqlite+aiosqlite:///{path}')
-    legacy = [t for t in Base.metadata.sorted_tables if t.name not in {'conversations', 'conversation_messages', 'chat_requests', 'chat_attachments'}]
+    legacy = [t for t in Base.metadata.sorted_tables if t.name not in {'conversations', 'conversation_messages', 'chat_requests', 'chat_attachments', 'chat_attachment_retention'}]
     async with engine.begin() as connection:
         await connection.run_sync(lambda conn: Base.metadata.create_all(conn, tables=legacy))
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -50,7 +50,7 @@ async def test_additive_migration_preserves_all_legacy_rows_and_restart(tmp_path
         with sqlite3.connect(path) as conn:
             rows = {t.name: conn.execute(f'SELECT * FROM "{t.name}" ORDER BY rowid').fetchall() for t in legacy}
             schema = conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name").fetchall()
-            schema = [r for r in schema if r[2] not in {'conversations', 'conversation_messages', 'chat_requests', 'chat_attachments'}]
+            schema = [r for r in schema if r[2] not in {'conversations', 'conversation_messages', 'chat_requests', 'chat_attachments', 'chat_attachment_retention'}]
             return schema, rows
     before = snapshot()
     assert all(before[1].values()), 'Every legacy table must contain a representative row'

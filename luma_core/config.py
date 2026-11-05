@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     chat_medium_tokens: int = Field(default=1024, ge=1, le=8192)
     chat_high_tokens: int = Field(default=2048, ge=1, le=8192)
     chat_image_models: str = "gpt-4o-mini,openai/gpt-4o-mini"
+    chat_attachment_ttl_hours: int = Field(default=24, ge=1, le=8760)
     chat_attachment_dir: str = "./private_uploads"
 
     @property

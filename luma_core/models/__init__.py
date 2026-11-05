@@ -1,4 +1,4 @@
-from luma_core.models.chat import ChatRequest, ChatAttachment
+from luma_core.models.chat import ChatRequest, ChatAttachment, AttachmentRetention
 from luma_core.models.models import (
     Conversation, ConversationMessage,
     Agent,

@@ -3,7 +3,6 @@ import asyncio
 import base64
 import hashlib
 import json
-from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -17,10 +16,10 @@ from luma_core.auth import get_owner_identity
 from luma_core.config import get_settings
 from luma_core.db.session import get_db
 from luma_core.memory.conversations import now
-from luma_core.models import Conversation, ConversationMessage, Task, TaskStatus, ChatAttachment, ChatRequest
+from luma_core.models import Conversation, ConversationMessage, Task, TaskStatus, ChatAttachment, ChatRequest, AttachmentRetention
 from luma_core.providers.prompts import redact_secrets
 from luma_core.providers.registry import create_registry
-from luma_core.routers.conversations import owned
+from luma_core.memory.attachments import cleanup_attachments, parse_attachment
 
 router = APIRouter(prefix='/api/chat', tags=['direct-chat'])
 MAX_FILE = 4 * 1024 * 1024
@@ -70,43 +69,30 @@ async def upload(request: Request, owner=Depends(get_owner_identity), session: A
         raise HTTPException(422, 'Invalid attachment')
     text = ''
     try:
-        if kind in ('image/png', 'image/jpeg', 'image/webp'):
-            from PIL import Image
-            with Image.open(BytesIO(data)) as image:
-                if image.format != {'image/png':'PNG', 'image/jpeg':'JPEG', 'image/webp':'WEBP'}[kind]:
-                    raise ValueError()
-                if image.width * image.height > 16_000_000:
-                    raise ValueError()
-                image.verify()
-        elif kind == 'text/plain':
-            text = bytes(data).decode('utf-8')
-            if '\x00' in text or len(text) > 20000:
-                raise ValueError()
-        elif kind == 'application/pdf':
-            from pypdf import PdfReader
-            reader = PdfReader(BytesIO(data), strict=True)
-            if reader.is_encrypted or len(reader.pages) > 30:
-                raise ValueError()
-            text = '\n'.join(page.extract_text() or '' for page in reader.pages)
-            if not text.strip() or len(text) > 20000:
-                raise ValueError()
-        else:
-            raise ValueError()
+        text = await parse_attachment(bytes(data), kind)
     except Exception:
-        raise HTTPException(422, 'Unsupported or malformed attachment (UTF-8 TXT, text PDF, PNG, JPEG, WebP only)') from None
+        raise HTTPException(422, 'Unsupported, malformed or over-budget attachment') from None
     settings = get_settings()
     text = redact_secrets(text, settings)
     key = str(uuid4())
     root = storage(settings)
     root.mkdir(parents=True, exist_ok=True)
     # Images only: discard document originals so configured secrets aren't retained in files.
-    if kind.startswith('image/'):
-        (root / key).write_bytes(data)
     row = ChatAttachment(id=key, owner=owner, kind=kind,
                          name=redact_secrets(name, settings), text=text)
     session.add(row)
+    # Lock/flush before writing: cleanup cannot mistake an in-flight upload for an orphan.
     await session.flush()
+    session.add(AttachmentRetention(attachment_id=key, created_at=now()))
+    await session.flush()
+    if kind.startswith('image/'):
+        (root / key).write_bytes(data)
     return {'id': key, 'name': row.name, 'kind': kind, 'preview': text[:500]}
+
+
+@router.post('/attachments/cleanup')
+async def cleanup(owner=Depends(get_owner_identity), session: AsyncSession = Depends(get_db)):
+    return await cleanup_attachments(session, get_settings(), owner)
 
 
 @router.get('/attachments/{attachment_id}')

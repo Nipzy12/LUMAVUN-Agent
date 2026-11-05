@@ -22,3 +22,10 @@ class ChatAttachment(Base):
     name: Mapped[str] = mapped_column(String(128))
     text: Mapped[str] = mapped_column(Text, default='')
     conversation_id: Mapped[str | None] = mapped_column(ForeignKey('conversations.id'), nullable=True)
+
+
+class AttachmentRetention(Base):
+    """Additive timestamps, including a conservative grace period for older uploads."""
+    __tablename__ = 'chat_attachment_retention'
+    attachment_id: Mapped[str] = mapped_column(ForeignKey('chat_attachments.id'), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(32))
