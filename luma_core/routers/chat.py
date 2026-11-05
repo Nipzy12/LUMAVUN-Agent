@@ -16,6 +16,7 @@ from luma_core.auth import get_owner_identity
 from luma_core.config import get_settings
 from luma_core.db.session import get_db
 from luma_core.memory.conversations import now
+from luma_core.memory.studio_privacy import guard_conversation, guard_attachment
 from luma_core.models import Conversation, ConversationMessage, Task, TaskStatus, ChatAttachment, ChatRequest, AttachmentRetention
 from luma_core.providers.prompts import redact_secrets
 from luma_core.providers.registry import create_registry
@@ -97,6 +98,7 @@ async def cleanup(owner=Depends(get_owner_identity), session: AsyncSession = Dep
 
 @router.get('/attachments/{attachment_id}')
 async def retrieve(attachment_id: UUID, owner=Depends(get_owner_identity), session: AsyncSession = Depends(get_db)):
+    await guard_attachment(session, attachment_id, owner)
     row = await session.get(ChatAttachment, str(attachment_id))
     if not row or row.owner != owner:
         raise HTTPException(404, 'Attachment not found')
@@ -113,12 +115,17 @@ async def retrieve(attachment_id: UUID, owner=Depends(get_owner_identity), sessi
 @router.post('/conversations/{conversation_id}/messages')
 async def direct_chat(conversation_id: UUID, payload: ChatInput, owner=Depends(get_owner_identity),
                       session: AsyncSession = Depends(get_db)):
+    await guard_conversation(session, conversation_id, owner)
     settings = get_settings()
     provider = create_registry(settings).get()
     if not provider.is_available:
         raise HTTPException(503, 'AI provider unavailable or API key missing')
     if not payload.content.strip():
         raise HTTPException(422, 'Message must not be blank')
+    from luma_core.models import ImageJob
+    if await session.scalar(select(ImageJob.id).where(
+            ImageJob.conversation_id == str(conversation_id), ImageJob.provider_active.is_(True))):
+        raise HTTPException(409, 'Conversation has an active image request')
     content = redact_secrets(payload.content, settings)
     fingerprint = hashlib.sha256(json.dumps([content, payload.level, [str(x) for x in payload.attachments]]).encode()).hexdigest()
     # Writer lock makes request claiming atomic across processes, before provider calls.
@@ -134,6 +141,10 @@ async def direct_chat(conversation_id: UUID, payload: ChatInput, owner=Depends(g
         if previous.status == 'completed':
             return {'status': 'completed', 'replayed': True}
         raise HTTPException(409, 'Request already attempted; refresh history before creating a new request')
+    if await session.scalar(select(ConversationMessage.id).where(
+            ConversationMessage.conversation_id == str(conversation_id),
+            ConversationMessage.client_message_id == str(payload.client_message_id))):
+        raise HTTPException(409, 'Message ID already used by another request')
     busy = await session.scalar(select(ChatRequest.id).where(ChatRequest.conversation_id == str(conversation_id), ChatRequest.status == 'running'))
     task = await session.scalar(select(Task.id).join(ConversationMessage, ConversationMessage.task_id == Task.id).where(
         ConversationMessage.conversation_id == str(conversation_id), Task.status.in_([TaskStatus.pending, TaskStatus.assigned, TaskStatus.in_progress])))

@@ -54,6 +54,32 @@ class Settings(BaseSettings):
     chat_attachment_ttl_hours: int = Field(default=24, ge=1, le=8760)
     chat_attachment_dir: str = "./private_uploads"
 
+    image_provider: Literal["unavailable", "openai", "openrouter"] = "unavailable"
+    openai_image_model: str = "gpt-image-2"
+    openrouter_image_model: str = "bytedance-seed/seedream-4.5"
+    image_storage_dir: str = "./private_images"
+    image_timeout_seconds: float = Field(default=180, gt=0, le=300)
+    image_max_output_bytes: int = Field(default=4 * 1024 * 1024, ge=1024, le=4 * 1024 * 1024)
+    image_max_per_generation: int = Field(default=1, ge=1, le=4)
+    image_max_concurrent: int = Field(default=2, ge=1, le=4)
+    image_orphan_ttl_hours: int = Field(default=24, ge=1, le=8760)
+
+    comfyui_enabled: bool = False
+    comfyui_local_url: str = "http://127.0.0.1:8188"
+    comfyui_remote_url: str | None = None
+    comfyui_trusted_origins: str = "http://127.0.0.1:8188"
+    comfyui_token: SecretStr | None = None
+    comfyui_manifest: str | None = None
+    comfyui_model_root: str | None = None
+    comfyui_default_model: str | None = None
+    comfyui_ws_progress: bool = False
+    comfyui_timeout_seconds: float = Field(default=300, ge=1, le=1800)
+    studio_max_pixels: int = Field(default=1048576, ge=65536, le=4194304)
+    studio_max_steps: int = Field(default=40, ge=1, le=100)
+    private_studio_enabled: bool = False
+    private_studio_allow_cloud: bool = False
+    private_studio_unlock_minutes: int = Field(default=15, ge=1, le=60)
+
     @property
     def is_debug(self) -> bool:
         return self.app_env == "development" and self.app_debug

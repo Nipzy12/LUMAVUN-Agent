@@ -1,0 +1,48 @@
+{
+  "models": [
+    {
+      "id": "sd15-art",
+      "file": "my_sd15.safetensors",
+      "display_name": "My reviewed SD 1.5 checkpoint",
+      "version": "replace-with-checkpoint-version",
+      "family": "sd15",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "verified_by_operator": false,
+      "license": "Replace with the actual reviewed license",
+      "source": "Replace with the official checkpoint source",
+      "inpaint": false,
+      "private_only": false,
+      "adult_content_permitted": false
+    },
+    {
+      "id": "sdxl-art",
+      "file": "my_sdxl.safetensors",
+      "display_name": "My reviewed SDXL checkpoint",
+      "version": "replace-with-checkpoint-version",
+      "family": "sdxl",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "verified_by_operator": false,
+      "license": "Replace with the actual reviewed license",
+      "source": "Replace with the official checkpoint source",
+      "inpaint": false,
+      "private_only": false,
+      "adult_content_permitted": false
+    }
+  ],
+  "loras": [
+    {
+      "id": "fictional-style",
+      "file": "my_style.safetensors",
+      "display_name": "My licensed fictional style LoRA",
+      "version": "replace-with-lora-version",
+      "family": "sd15",
+      "compatible_models": ["sd15-art"],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "verified_by_operator": false,
+      "license": "Replace with the actual reviewed license",
+      "source": "Replace with the official LoRA source",
+      "private_only": false,
+      "adult_content_permitted": false
+    }
+  ]
+}

@@ -757,3 +757,370 @@ currently impose an OS-level hard memory cap; parser allocations can briefly
 exceed input/decoded-content bounds. This mitigates resource exhaustion, not a
 full hostile-file sandbox. No OCR, image-secret recognition or metadata stripping
 is added. Broad public upload access still requires further operational controls.
+
+## Phase 3.2.2 — Luma Office AI Image Studio
+
+Image Studio is an explicit, chargeable Chat operation, separate from text/vision
+Chat and from Work. In Chat choose **+ → Generate Image**, describe the scene,
+select the image model, Low/Medium/High quality and 1:1, 16:9 or 9:16, then Send
+and confirm the cost warning. Ordinary Chat never becomes a Work task. For an
+uploaded image choose **+ → Upload Reference Image** (or upload an image and
+choose **Edit Image**), describe the edit, and Send. The resulting raster image
+appears inline, not as base64 text. **Edit Again** selects that revision as the
+next reference; **View Original**, **View Previous Versions**, and **Save Image /
+Download** use authenticated retrieval. Reopen a saved conversation after refresh
+and reconnect the owner token to restore its image versions.
+
+Identity, face/clothing preservation, exact object placement and text rendering
+remain model-dependent best effort. Ask explicitly for what must be preserved.
+The app accepts broad lawful creative prompts, subject to provider policies; it
+does not lower moderation or bypass provider filters. Refusal/unsupported-request
+errors are understandable but intentionally do not expose raw provider bodies.
+
+### Image providers and verified API contracts
+
+Image generation is explicitly configured independently of `AI_PROVIDER`:
+
+| IMAGE_PROVIDER | Image model | Endpoint | References | Aspect handling |
+| --- | --- | --- | --- | --- |
+| `openai` | `gpt-image-2` | `POST https://api.openai.com/v1/images/generations`, multipart `/images/edits` | One PNG/JPEG/WebP reference | 1024x1024, 1536x864, 864x1536 |
+| `openrouter` | `bytedance-seed/seedream-4.5` | `POST https://openrouter.ai/api/v1/images` | One inline `input_references` image | Native `aspect_ratio` |
+
+The server capability registry deliberately excludes vision-only text models,
+retired DALL·E and `gpt-image-1`, arbitrary model IDs, masks, user-supplied URLs,
+and unsupported request fields. Only the configured known image model is exposed
+in the model selector. Existing `OPENAI_API_KEY` / `OPENROUTER_API_KEY` SecretStr
+settings are reused. Provider access/model availability depends on your account.
+OpenRouter's normalized `quality` parameter can be ignored/clamped by a provider;
+Low/Medium/High is not a guaranteed price or capability difference. No reliable
+pre-generation price is asserted. Allowlisted numerical usage/cost metadata is
+stored when returned and displayed as provider-reported billing units. OpenAI
+may return token usage without monetary cost. Real bills are authoritative.
+
+Contracts checked against official sources on 2026-11-05 (no paid calls):
+
+- [OpenAI official OpenAPI](https://github.com/openai/openai-openapi/blob/master/openapi.yaml): `CreateImageRequest`, `CreateImageEditRequest`, `ImagesResponse`; explicitly documents `gpt-image-2` and custom WIDTHxHEIGHT sizes divisible by 16.
+- [OpenRouter official SDK image example](https://github.com/OpenRouterTeam/python-sdk/blob/0c943893f45002934bf8b20ca30c782f11906361/docs/sdks/images/README.mdx) uses `bytedance-seed/seedream-4.5`.
+- [OpenRouter request contract](https://github.com/OpenRouterTeam/python-sdk/blob/0c943893f45002934bf8b20ca30c782f11906361/src/openrouter/components/imagegenerationrequest.py) defines references, quality, aspect ratio, image count and output format.
+- [OpenRouter response contract](https://github.com/OpenRouterTeam/python-sdk/blob/0c943893f45002934bf8b20ca30c782f11906361/src/openrouter/components/imagegenerationresponse.py) returns `data[].b64_json` / `media_type`; SDK routes `/images` under `/api/v1`.
+
+The OpenRouter documentation host was blocked in this cloud environment; its
+official GitHub SDK was used instead. SDK schema compatibility is verified with
+mocks, not a guarantee of live provider/model behavior. No OpenAI/OpenRouter SDK
+or additional production dependency is required.
+
+### Storage, retention, privacy and governance
+
+Startup adds only `image_jobs` and `image_assets`. No existing table columns,
+conversations, tasks, approvals, agents or databases are rewritten or deleted.
+Jobs bind a durable UUID idempotency key and payload hash to owner + conversation.
+Assets are immutable UUID-named files under `IMAGE_STORAGE_DIR`; SQLite stores
+metadata and parent/source/job/message IDs, never binary BLOBs. Edits create a new
+asset without modifying the parent. Imported references are privately copied and
+the original attachment is conversation-linked to protect it from expiry cleanup.
+Back up the SQLite file and both private upload/image directories together while
+the server is stopped. Never mount either private directory publicly.
+
+Every Image API requires the owner token, including model/history queries,
+retrieval and download; images are not embedded in public URLs with credentials.
+Private responses set `Cache-Control: no-store`; binary responses also set nosniff
+and restrictive CSP. Browser previews use tab-memory data URLs after an
+authenticated request. Logout clears previews/history and version dialogs. No
+credentials or image bytes enter localStorage or audit logs. Image audit events
+are filtered by job ownership. Configured textual secrets are redacted; images
+and metadata are not semantically scanned for secrets or stripped of EXIF.
+
+`POST /api/images/cleanup` is an explicit owner-only orphan cleanup operation.
+It removes aged UUID regular files absent from **all** image asset rows, with a
+SQLite writer lock excluding image persistence. TTL defaults to 24 hours;
+symlinks, unknown filenames and every registered asset are preserved. Both cleanup
+routines also protect IDs registered by the other subsystem, including when the
+upload and image directories share a path. Successful
+conversation revisions and their original references never expire automatically.
+There is no scheduler, deletion UI or global storage quota in this phase.
+
+Work task-specific approval, atomic execution, audit and cancellation behavior
+remain intact; no image tool is added to agent execution. Chat has no shell,
+workspace file tools, arbitrary code or automatic action path. Application-managed
+image persistence is the only new file-writing operation.
+
+### API, limits, cancellation and cost safety
+
+- `GET /api/images/models`: configured capability/model and charge warning.
+- `POST /api/images/conversations/{id}/generate`: `{client_message_id, prompt, model, quality, aspect_ratio, n, parent_id? OR reference_attachment_id?}`.
+- `GET /api/images/conversations/{id}`: ordered assets and job status/usage.
+- `GET /api/images/assets/{uuid}` (`?download=true` for attachment disposition).
+- `POST /api/images/jobs/{uuid}/cancel`: discard late output; cannot undo provider charges.
+- `POST /api/images/cleanup`: protected orphan-file retention.
+
+Prompts are limited to 4000 characters. The UI generates one image; the server
+allows configurable `IMAGE_MAX_PER_GENERATION` (1–4). A total decoded output-byte
+budget (default/hard maximum 4 MiB) is enforced before persistence, along with a
+bounded streamed JSON/base64 response, accepted raster MIME/signatures, 16 million
+pixels, actual image decoding and the existing isolated parser budgets. Providers
+that return larger images fail safely even if the request was charged. Reference
+files are bounded/revalidated too. Provider-supplied output URLs are never fetched
+(avoids SSRF); only inline base64 raster output is accepted, never SVG/HTML.
+
+SQLite claims serialize before provider calls. At most one active Chat/Work/image
+turn runs per conversation and two image requests per owner by default. Cancelling
+continues to occupy a physical-call slot until the provider call has returned or
+timed out. Provider calls have a separate configurable 180-second deadline;
+validation has bounded parser time in addition to it. No automatic retry is made.
+Replaying an identical completed UUID returns the saved result without another
+call; running/failed/cancelled UUIDs return 409. Inspect job history before
+explicitly choosing to send a new paid request. Cross-mode message IDs cannot
+silently create duplicate turns.
+
+A process crash, disk failure or DB outage after the durable claim can leave an
+active job requiring operator inspection after the old server is stopped. There
+is no lease recovery, background queue or automatic paid replay. Files written
+before a rolled-back metadata transaction become private orphans eligible for
+later cleanup. Windows has subprocess parser isolation and timeouts, but no hard
+OS-level memory cap; POSIX additionally caps worker CPU/address space. Original
+metadata, image secrecy, storage quotas and account spending limits remain the
+operator's responsibility. No conversation image bytes are automatically fed
+into ordinary Chat history; iterative editing requires an explicit reference.
+
+### Windows 10 CMD: safe manual verification
+
+Stop the server, preserve your `.env` and user database, then update requirements:
+
+```bat
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m pytest -ra
+```
+
+For one paid smoke test use a disposable database and private directories in the
+same CMD session (provider API key stays in your private `.env`, never in Git):
+
+```bat
+set DATABASE_URL=sqlite:///./image_studio_smoke.db
+set CHAT_ATTACHMENT_DIR=./image_smoke_uploads
+set IMAGE_STORAGE_DIR=./image_smoke_assets
+set IMAGE_PROVIDER=openai
+set OPENAI_IMAGE_MODEL=gpt-image-2
+set IMAGE_MAX_PER_GENERATION=1
+python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000
+```
+
+For OpenRouter use `set IMAGE_PROVIDER=openrouter` and
+`set OPENROUTER_IMAGE_MODEL=bytedance-seed/seedream-4.5` instead, with your privately
+configured key. Connect at `/office`. Generate one Low-quality 1:1 scene, then
+Edit Again with one small change. Check Original/Previous Versions, download,
+refresh/reconnect, and reopen history. Test uploaded-reference edits explicitly.
+Check that Work has no task created by these operations. Provider calls cost money;
+stop after your intended requests. Closing this CMD restores your normal `.env`
+settings; no production database needs to be deleted or moved.
+
+Orphan cleanup (does not invoke a provider):
+
+```bat
+curl -X POST http://127.0.0.1:8000/api/images/cleanup -H "X-Luma-Owner-Token: %LOCAL_OWNER_TOKEN%"
+```
+
+Automated tests mock image generation. Optional Playwright/Chromium tests run with
+`python tests/browser_office.py`; `LUMA_UI_ARTIFACT_DIR` captures screenshots using
+clearly labeled **mock** image results. No real AI generation is part of tests.
+
+## Phase 3.2.3 — Advanced Studio and opt-in Private Studio 18+
+
+**+ → Advanced Studio** adds trusted SD 1.5/SDXL text-to-image, img2img and
+inpainting recipes alongside the existing cloud Image Studio. Select **ComfyUI
+local**, **ComfyUI trusted remote GPU**, or the explicitly configured **cloud**
+provider. Engine availability and supported model information are shown before
+submission. There is no automatic fallback or private-image transfer to a cloud
+service. Core Chat/Work and Phase 3.2.2 continue working with ComfyUI disabled.
+
+The main FastAPI environment imports no torch, CUDA, ComfyUI, model weights or
+mandatory additional ML dependency. ComfyUI runs separately on suitable hardware;
+a Windows computer without a GPU can remain the lightweight Luma Office host.
+Only the optional WebSocket progress path imports `websockets`; if unavailable,
+HTTP polling remains authoritative. No models or custom nodes are downloaded,
+installed, uploaded into execution directories or executed by Luma Office.
+
+### Model and LoRA Manager
+
+The authenticated model catalog reads ComfyUI `/system_stats` and `/object_info`.
+It combines available checkpoint/LoRA names with administrator-reviewed metadata
+from `COMFYUI_MANIFEST`; copy and adapt `examples/comfyui-manifest.example.json`.
+Example records deliberately remain disabled until reviewed. Checkpoints are not
+reliably identifiable by filenames: family, version, licenses and compatibility
+must be verified by the operator. Unknown models are visible as incompatible,
+not guessed or executed. Currently only reviewed **sd15** and **sdxl** recipes
+are supported. FLUX, SD3, arbitrary custom nodes, ControlNet and other families
+are not advertised as compatible by these recipes.
+
+Each record needs a stable opaque ID, relative catalog filename, family, version,
+actual SHA256, `verified_by_operator: true`, license/source metadata and explicit
+inpainting permission if appropriate. Only `.safetensors` are executable through
+this adapter; pickle-based `.ckpt` files are intentionally unsupported. Paths from
+the browser are never accepted. For local hash verification, configure
+`COMFYUI_MODEL_ROOT` to the separate ComfyUI `models` directory. Luma reads weights
+in bounded chunks without loading/importing them, compares SHA256, prevents path
+escape and caches digests by path/size/mtime. The standard remote ComfyUI catalog
+has no independently verifiable weight-hash endpoint: remote deployments report
+**operator-attested** hashes rather than claiming runtime cryptographic verification.
+Provision/verify remote weights independently and protect that GPU host.
+
+The UI shows availability, compatibility, version, license/source and approximate
+hardware requirements. Estimates depend on dimensions, batch, VAE, optimization
+and checkpoint; they are not guarantees. Default model choices are saved per
+owner and ordinary/private scope. LoRAs can be enabled individually with strength
+from -1 to 1.5, maximum three, and saved as reusable presets. Family and optional
+explicit base-model compatibility are enforced on every generation. Private-only
+model/LoRA metadata and presets are excluded from the ordinary catalog.
+
+### Generation, transformation and masks
+
+Positive/negative prompts, dimensions, seed, steps, CFG, denoise and bounded batch
+are validated server-side. Empty seed derives a stable seed from the request UUID,
+so idempotency does not choose a different seed on replay. Defaults are 512x512,
+20 steps, CFG 7 and one image; server limits default to 1,048,576 pixels and 40
+steps, in addition to Phase 3.2.2 output-byte/count limits. Recipes use a fixed
+Euler/normal sampler pair. Native workflows use dimensions/steps, not cloud
+quality/aspect controls; cloud adapters reject native-only parameters.
+
+Upload or select an existing revision for img2img. The original is preserved and
+the output gets a new immutable parent reference. Inpainting additionally requires
+a checkpoint explicitly approved for that recipe and a PNG mask matching original
+dimensions. The canvas supports brush, erase, invert, brush size and original /
+overlay comparison. White means edit, black means preserve. The mask and original
+are retained privately and linked to the execution/revision. The fixed graph
+scales mask and source consistently before `InpaintModelConditioning`; it never
+assumes every checkpoint supports inpainting. Native reference edits currently
+produce one output at a time. The browser mask editor has a conservative one-million-
+pixel source budget. Final previews, downloads and original comparisons are
+provided; intermediate binary ComfyUI previews are not relayed.
+
+### ComfyUI protocol, cancellation and recovery
+
+The adapter uses official `POST /prompt`, `/history/{prompt_id}`, `/view`,
+`/upload/image`, `/object_info` and optional `/ws`. See the official
+[ComfyUI server source](https://github.com/Comfy-Org/ComfyUI/blob/master/server.py).
+Only code-defined versioned recipes can submit graphs; no request may provide
+workflow JSON, node classes, model file paths, URLs, shell commands or Python.
+The graph uses bounded core loader/CLIP/sampler/VAE/image/mask/LoRA nodes.
+
+Prompt IDs, engine, recipe version, normalized seed, progress, mask linkage and
+endpoint fingerprint are persisted in additive `studio_executions` records.
+Optional `/ws` updates accept bounded numerical progress for the matching prompt
+ID; binary previews/raw events are ignored. Polling remains available without WS.
+The adapter never invokes global `/interrupt` or clears a shared queue. It uses
+job-specific cancellation where the ComfyUI version supports it; otherwise local
+cancellation discards results while the physical slot remains reserved until
+completion is known. Remote computation/charges cannot be undone.
+
+A transport failure after submission is **uncertain acceptance**, not permission
+to retry. The job retains its slot and moves to `needs_recovery`. **Recover known
+remote job** performs read-only remote queries and validated local persistence;
+it never resubmits the workflow. Recovery may safely race a live monitor: atomic
+finalization prevents duplicate outputs or reopening finished execution slots.
+If the prompt ID was never received, operator inspection is required. Restore the
+same configured endpoint before recovering a known job; endpoint changes are not
+silently accepted. No automatic paid cloud retries are introduced.
+
+### Private Studio 18+: access and visibility
+
+Private Studio is a dedicated opt-in workspace for lawful, permitted **fictional
+adult** artwork. It is disabled by default and requires the owner token, explicit
+adult/eligibility/policy attestations and a short-lived unlock token held only in
+tab memory. Self-attestation is **not formal age verification**. This single-owner
+self-hosted feature must not be exposed as an unverified public adult service;
+operators must provide stronger age assurance wherever legally required.
+
+Private access never overrides applicable law, consent, provider rules or model
+licenses. Prohibited sexual content, minors, nonconsensual intimate imagery and
+safety-filter bypasses are not supported use cases. There are no face-swap,
+nudification or provider-filter-disable workflows. `adult_content_permitted: true`
+must be explicitly reviewed for each private checkpoint and LoRA. Mark adult-only
+models/LoRAs `private_only: true`. No semantic content/age/identity classifier is
+included: operators and users remain responsible for classification, consent and
+lawful use. Ordinary Studio is for ordinary artwork; use the private workspace
+for permitted fictional adult content rather than labeling it ordinary.
+
+Private workspaces do not appear in ordinary Chat lists/search, Work, global audit
+views or locked previews. A private unlock header does not grant ordinary endpoints
+access. Every asset/revision inherits its immutable conversation classification;
+private uploads and masks are also scope-bound. Private gallery visibility can
+be toggled independently, including reopening hidden workspaces after unlocking.
+Downloads require both owner authentication and a valid private session.
+
+Lock, close, page hide, tab visibility changes, owner disconnect and unlock expiry
+clear private prompts/previews, mask pixels, gallery and cached session state.
+Unlock tokens are hashed in SQLite, expire after 15 minutes by default, and are
+never put in localStorage, URLs, prompts or audit logs. Lock revokes the owner's
+private sessions. Tokens or files already downloaded to another client cannot be
+remotely erased; this is access control, not DRM.
+
+Cloud transfer is separately disabled for private workspaces. Enabling
+`PRIVATE_STUDIO_ALLOW_CLOUD` still requires explicit per-request confirmation of
+the destination and its policies. Local/remote ComfyUI is also a trust boundary:
+its operator may access prompts, inputs, outputs and logs. Keep ComfyUI private,
+use reviewed nodes/checkpoints, and apply independent remote retention controls.
+No private contents enter Luma audit summaries or sanitized error responses.
+
+### Private deletion, storage and migrations
+
+Startup adds only `studio_workspaces`, `studio_unlocks`, `studio_attachments`,
+`studio_executions`, `studio_lora_presets` and `studio_preferences`. Existing
+Phase 3.2.2 image/job tables, conversations and files are preserved. Old assets
+remain ordinary; no automatic private classification or destructive backfill.
+
+Delete requires explicit owner confirmation and an unlocked private session.
+It tombstones the private workspace and cancels active local job results. Explicit
+purge waits for physical calls to finish, removes its local image/reference/mask
+files, and scrubs private message/title contents. It retains classification and
+minimal metadata so deleted workspaces cannot reappear in ordinary history. Files
+with cross-workspace lineage references and unsafe/symlink paths are preserved.
+Purge targets only newly created private workspaces, never existing ordinary data.
+This is logical deletion, not forensic secure erasure of SQLite pages/WAL/backups.
+Storage is not encrypted by the app; protect filesystem permissions and backups.
+ComfyUI inputs/outputs and other remote copies require separate operator cleanup.
+
+### Windows 10 setup
+
+Keep the main application environment lightweight:
+
+```bat
+.venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m pytest -ra
+python -m uvicorn luma_core.app:app --host 127.0.0.1 --port 8000
+```
+
+For ComfyUI, follow its official installation instructions **in a separate
+environment/GPU host**. Provision appropriately licensed safetensors manually.
+For a local installation, start it in its own CMD, bound to loopback:
+
+```bat
+cd C:\AI\ComfyUI
+.venv\Scripts\activate
+python main.py --listen 127.0.0.1 --port 8188
+certutil -hashfile models\checkpoints\my_sd15.safetensors SHA256
+```
+
+Copy the example manifest outside source-controlled private configuration, insert
+actual hashes/metadata and mark verified records only after checking them. In your
+private Luma `.env`, set `COMFYUI_ENABLED=true`, `COMFYUI_MANIFEST` to that JSON and
+optionally `COMFYUI_MODEL_ROOT=C:\AI\ComfyUI\models`. Set the default model to its
+manifest ID. Open Chat → **+ → Advanced Studio** and verify availability, text-to-
+image, reference editing, mask editing, model defaults and LoRA presets.
+
+Remote GPU hosts require a configured HTTPS origin, an explicit entry in
+`COMFYUI_TRUSTED_ORIGINS`, appropriate authentication/TLS and network controls.
+Do not expose an unauthenticated ComfyUI port publicly. The browser cannot change
+those endpoints. Provision environment network allowlists for the chosen host.
+
+Only after checking legal eligibility and model licenses, explicitly enable
+`PRIVATE_STUDIO_ENABLED=true`, open **Private Studio 18+**, attest eligibility and
+unlock. Test with benign fictional artwork first; verify ordinary history has no
+private workspace, lock clears previews, hide/show works and downloads require
+unlock. Leave private cloud transfer disabled unless specifically intended.
+
+All automated providers/ComfyUI responses are mocked. Python 3.12/3.15 backend
+and Chromium suites use disposable databases; no real GPU or paid provider call
+is required. `LUMA_UI_ARTIFACT_DIR` captures screenshots with labeled mock images.
+Real GPU/checkpoint behavior, licenses and native Windows execution still require
+operator verification. No Phase 3.3 features are included.
