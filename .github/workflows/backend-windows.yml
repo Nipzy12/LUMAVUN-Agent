@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - hotfix/windows-cancellation-regression
+      - feature/phase-3.2.3-advanced-studio
   workflow_dispatch:
 
 permissions:
@@ -18,8 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.15']
-    env:
-      APP_DEBUG: 'false'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -27,10 +26,30 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install project test dependencies
         run: python -m pip install -r requirements.txt
-      - name: Select disposable database location
-        shell: pwsh
-        run: |
-          $testDatabase = (Join-Path $env:RUNNER_TEMP 'luma-ci-unused.db').Replace('\', '/')
-          "DATABASE_URL=sqlite:///$testDatabase" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Run all backend tests
         run: python -m pytest -ra
+
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install mocked browser test dependencies
+        run: python -m pip install -r requirements.txt playwright
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run disposable mocked Office integration tests
+        env:
+          LUMA_UI_ARTIFACT_DIR: ${{ runner.temp }}/luma-office-screenshots
+        run: python tests/browser_office.py
+      - name: Upload mock-only review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mocked-office-screenshots
+          path: ${{ runner.temp }}/luma-office-screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 14

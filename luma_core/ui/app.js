@@ -1,6 +1,13 @@
 /* Luma Office: same-origin APIs, text-only rendering, tab-memory credentials. */
 'use strict';
 const $ = (id) => document.getElementById(id);
+let studioMode = null;
+let imageReference = null;
+let pendingImageSend = null;
+let imageAssets = [];
+let imageJobs = [];
+let imageSending = false;
+const imageCache = new Map();
 let workComposer = false;
 let pendingAttachments = [];
 const state = {
@@ -23,6 +30,10 @@ function showToast(message, error = false) {
   showToast.timer = setTimeout(() => { toast.hidden = true; }, 5000);
 }
 function clearPrivateState() {
+  window.lumaLockStudio?.();
+  studioMode = null; imageReference = null; pendingImageSend = null; imageAssets = []; imageJobs = []; imageSending = false; imageCache.clear();
+  if ($('imageVersions')) { $('imageVersions').close(); $('imageVersions').replaceChildren(); }
+  $('imageStudio').hidden = true;
   pendingAttachments = []; renderAttachments();
   state.authVersion++; state.refreshVersion++; state.selectionVersion++;
   state.selectedTask = null; state.conversationId = null; state.conversation = null;
@@ -152,12 +163,18 @@ function renderChat() {
       row.dataset.messageId = message.id; row.dataset.role = message.role;
       if (message.role === 'assistant') append(row, element('div', 'luma-avatar', 'L'));
       const bubble = element('div', message.role === 'user' ? 'user-bubble' : 'luma-bubble');
-      append(bubble, element('div', 'result', message.content)); append(row, bubble); append(thread, row);
+      append(bubble, element('div', 'result', message.content));
+      for (const asset of imageAssets.filter(a => a.message_id === message.id)) bubble.append(imageCard(asset));
+      append(row, bubble); append(thread, row);
     }
   } else if (task) {
     // Legacy Work tasks remain readable, without inventing a conversation/history.
     append(thread, element('div', 'user-bubble', task.description || task.title));
     if (task.result) append(thread, element('div', 'result', task.result));
+  }
+  for (const job of imageJobs.filter(j => j.status !== 'completed')) {
+    const status = element('div', 'image-job-status', `Image ${job.status}: ${job.error || (job.provider_active ? 'Provider may still be processing; no retry will be sent.' : '')}`);
+    thread.append(status);
   }
   if (task) {
     const panel = element('div', 'task-panel'); const meta = element('div', 'task-meta');
@@ -225,7 +242,8 @@ function renderAll() {
   $('createAgentSubmit').disabled = state.busy;
   $('newTaskBtn').disabled = state.busy;
   $('renameConversationBtn').disabled = state.busy;
-  $('composerStatus').textContent = activeTask() ? 'Selesaikan atau batalkan task aktif sebelum mengirim pesan berikutnya.' : 'Maksimal 512 karakter. Setiap pesan memerlukan approval baru.';
+  document.body.classList.toggle('studio-mode', Boolean(studioMode && !workComposer));
+  $('composerStatus').textContent = activeTask() ? 'Selesaikan atau batalkan task aktif sebelum mengirim pesan berikutnya.' : studioMode && !workComposer ? 'Up to 4000 characters. Explicit image request; provider charges may apply.' : workComposer ? 'Maksimal 512 karakter. Task memerlukan approval owner.' : 'Maksimal 512 karakter. Chat hanya menghasilkan teks.';
   $('connectBtn').setAttribute('aria-label', state.token ? 'Owner token tersambung' : 'Sambungkan owner token');
 }
 function locationConversation() {
@@ -233,6 +251,7 @@ function locationConversation() {
   return /^[a-f0-9-]{36}$/i.test(id || '') ? id : null;
 }
 function selectConversation(id) {
+  imageAssets = []; imageJobs = []; imageReference = null;
   state.selectionVersion++; state.conversationId = id; state.selectedTask = null;
   state.messages = []; state.conversation = null; state.pendingSend = null; state.restoreJob = true; $('promptInput').value = '';
   history.replaceState(null, '', `${location.pathname}#conversation=${encodeURIComponent(id)}`);
@@ -252,11 +271,13 @@ async function loadSelectedConversation(refreshVersion) {
   if (!state.conversationId) return;
   const id = state.conversationId, selection = state.selectionVersion, auth = state.authVersion;
   const detail = await fetchConversation(id);
+  const studio = await api('GET', `/api/images/conversations/${id}`);
   if (auth !== state.authVersion || selection !== state.selectionVersion || refreshVersion !== state.refreshVersion) return;
   const lastUser = [...detail.messages].reverse().find((m) => m.role === 'user');
   let task = null;
   if (lastUser?.task_id) task = await api('GET', `/api/tasks/${lastUser.task_id}`);
   if (auth !== state.authVersion || selection !== state.selectionVersion || refreshVersion !== state.refreshVersion) return;
+  imageAssets = studio.assets; imageJobs = studio.jobs;
   state.conversation = detail; state.messages = detail.messages; state.selectedTask = task?.id || null;
   if (task) {
     state.tasks = [task, ...state.tasks.filter((t) => t.id !== task.id)];
@@ -353,7 +374,8 @@ async function createConversation(title = 'Percakapan baru') {
   selectConversation(conversation.id); return conversation;
 }
 async function resetChat() {
-  $('promptInput').placeholder = 'Tanya Luma…';
+  studioMode = null; imageReference = null; imageAssets = []; imageJobs = []; pendingImageSend = null; $('imageStudio').hidden = true;
+  $('promptInput').maxLength = 512; $('promptInput').placeholder = 'Tanya Luma…';
   workComposer = false; document.body.classList.remove('work-composer'); pendingAttachments = []; renderAttachments();
   await withAction(() => createConversation(), 'Percakapan baru dibuat.'); $('promptInput').focus();
 }
@@ -365,6 +387,7 @@ function messageId() {
 }
 $('composerForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (studioMode && !workComposer) { await sendImage(); return; }
   const text = $('promptInput').value.trim(), jobType = $('jobTypeSelect').value;
   if (!text || state.busy || activeTask()) return;
   if ([...text].length > 512) { showToast('Pesan maksimal 512 karakter. Tidak ada teks yang dipotong otomatis.', true); return; }
@@ -441,7 +464,7 @@ document.addEventListener('keydown', event => {
 $('conversationSearch').addEventListener('input', renderHistory);
 $('usageLevel').addEventListener('change', () => { try { localStorage.setItem('luma.usageLevel', $('usageLevel').value); } catch (_) {} });
 $('workTaskBtn').addEventListener('click', async () => {
-  await resetChat(); workComposer = true; document.body.classList.add('work-composer');
+  await resetChat(); studioMode = null; $('imageStudio').hidden = true; workComposer = true; document.body.classList.add('work-composer');
   switchView('chat'); $('promptInput').placeholder = 'Tulis task untuk agent (approval diperlukan)…';
 });
 function renderAttachments() {
@@ -469,3 +492,96 @@ $('attachmentInput').addEventListener('change', async () => {
   } catch (error) { if (auth === state.authVersion) showToast(error.message, true); }
   finally { $('attachmentInput').value = ''; }
 });
+
+async function privateImage(asset, download = false) {
+  const auth = state.authVersion; requireOwner();
+  const response = await fetch(`/api/images/assets/${asset.id}${download ? '?download=true' : ''}`, {headers:{'X-Luma-Owner-Token':state.token},cache:'no-store'});
+  if (!response.ok) throw new Error('Private image unavailable.');
+  const blob = await response.blob();
+  if (auth !== state.authVersion) throw new Error('Owner session changed.');
+  return new Promise((resolve,reject) => { const reader = new FileReader(); reader.onload = () => auth === state.authVersion ? resolve(reader.result) : reject(new Error('Owner session changed.')); reader.onerror = reject; reader.readAsDataURL(blob); });
+}
+function imageCard(asset) {
+  const card = element('figure','image-card'); const image = document.createElement('img');
+  image.alt = 'Luma Image Studio result'; image.loading = 'lazy'; image.dataset.imageAsset = asset.id;
+  card.append(image); const auth = state.authVersion;
+  if (!imageCache.has(asset.id)) imageCache.set(asset.id, privateImage(asset).catch(() => {imageCache.delete(asset.id); return null;}));
+  Promise.resolve(imageCache.get(asset.id)).then(src => {if (src && auth === state.authVersion && image.isConnected) image.src = src;});
+  const actions = element('figcaption','image-actions');
+  actions.append(button('Save Image / Download', async () => {
+    try { const src = await privateImage(asset,true); const link = document.createElement('a'); link.href = src; link.download = asset.id + '.' + asset.mime.split('/')[1]; link.click(); }
+    catch (error) { showToast(error.message,true); }
+  }));
+  actions.append(button('Edit Again', () => openStudio('edit',asset)));
+  actions.append(button('View Original', () => {
+    let original = asset; const visited = new Set();
+    while (original.parent_id && !visited.has(original.id)) { visited.add(original.id); original = imageAssets.find(a => a.id === original.parent_id) || original; }
+    showImageVersions([original]);
+  }));
+  actions.append(button('View Previous Versions', () => {
+    const versions = []; const visited = new Set(); let current = asset;
+    while (current && !visited.has(current.id)) { visited.add(current.id); versions.push(current); current = imageAssets.find(a => a.id === current.parent_id); }
+    showImageVersions(versions.reverse());
+  }));
+  const cost = imageJobs.find(j => j.id === asset.job_id)?.usage?.cost;
+  if (typeof cost === 'number') actions.append(element('small','image-cost',`Provider-reported cost: ${cost} (provider billing units)`));
+  card.append(actions); return card;
+}
+function showImageVersions(versions) {
+  let dialog = $('imageVersions');
+  if (!dialog) { dialog = document.createElement('dialog'); dialog.id = 'imageVersions'; dialog.className = 'dialog image-versions'; dialog.setAttribute('aria-label','Image revision history'); document.body.append(dialog); }
+  dialog.replaceChildren(); dialog.append(button('Close', () => dialog.close()));
+  versions.forEach(asset => { const image = document.createElement('img'); image.alt = 'Image version ' + asset.id; privateImage(asset).then(src => {if (dialog.open) image.src = src;}).catch(error => showToast(error.message,true)); dialog.append(image); });
+  dialog.showModal();
+}
+async function openStudio(mode, reference = null) {
+  if (state.busy) return;
+  try {
+    requireOwner(); workComposer = false; document.body.classList.remove('work-composer'); studioMode = mode;
+    imageReference = reference; $('imageStudio').hidden = false; $('attachMenu').hidden = true;
+    $('imageReferenceLabel').textContent = reference ? 'Editing revision ' + reference.id : mode === 'edit' ? 'Select an uploaded reference image using +, or Edit Again on a result.' : 'Text to image · no reference selected';
+    const options = await api('GET','/api/images/models'); $('imageModel').replaceChildren();
+    options.models.forEach(model => { const option = document.createElement('option'); option.value = model.id; option.textContent = model.id; $('imageModel').append(option); });
+    $('imageCostWarning').textContent = options.available ? options.cost_warning : 'Image provider unavailable. Configure IMAGE_PROVIDER and its API key/model on the server.';
+    $('promptInput').maxLength = 4000;
+    $('promptInput').placeholder = mode === 'edit' ? 'Describe your edit. Identity preservation is best-effort…' : 'Describe the image you want to create…';
+    renderAll(); $('promptInput').focus();
+  } catch (error) { showToast(error.message,true); }
+}
+async function sendImage() {
+  const text = $('promptInput').value.trim(); if (!text || state.busy) return;
+  if (!confirm('Generate a chargeable image request? No automatic retry will be made.')) return;
+  await withAction(async () => {
+    requireOwner(); if (!state.conversationId) await createConversation(text.slice(0,80));
+    const attachment = pendingAttachments.find(a => a.kind.startsWith('image/'));
+    if (studioMode === 'generate' && pendingAttachments.length) throw new Error('Choose Edit Image to use a reference, or remove attachments for text-to-image.');
+    if (studioMode === 'edit' && pendingAttachments.length > 1) throw new Error('Image Studio supports one reference image per edit.');
+    const imageAuth = state.authVersion;
+    if (studioMode === 'edit' && !imageReference && !attachment) throw new Error('Select or upload a reference image first.');
+    const payload = {prompt:text, model:$('imageModel').value, quality:$('imageQuality').value, aspect_ratio:$('imageRatio').value, n:1,
+      ...(studioMode === 'edit' ? (imageReference ? {parent_id:imageReference.id} : {reference_attachment_id:attachment.id}) : {})};
+    const signature = JSON.stringify([state.conversationId,payload]);
+    if (!pendingImageSend || pendingImageSend.signature !== signature) pendingImageSend = {signature,payload:{...payload,client_message_id:messageId()}};
+    imageSending = true;
+    try {
+      const job = await api('POST',`/api/images/conversations/${state.conversationId}/generate`,pendingImageSend.payload);
+      if (job.status !== 'completed') throw new Error(job.error || `Image ${job.status}. Inspect history before starting another paid request.`);
+      pendingImageSend = null; pendingAttachments = []; renderAttachments(); $('promptInput').value = '';
+    } finally { if (imageAuth === state.authVersion) { imageSending = false; $('cancelImageBtn').hidden = true; } }
+  });
+}
+$('generateImageBtn').addEventListener('click', () => openStudio('generate'));
+$('editImageBtn').addEventListener('click', () => openStudio('edit'));
+$('referenceImageBtn').addEventListener('click', async () => { await openStudio('edit'); $('attachmentInput').accept = 'image/png,image/jpeg,image/webp'; $('attachmentInput').click(); });
+$('closeStudio').addEventListener('click', () => {if (!state.busy) {studioMode = null; imageReference = null; $('imageStudio').hidden = true; $('promptInput').maxLength = 512; $('promptInput').placeholder = 'Tanya Luma…'; renderAll();}});
+$('cancelImageBtn').addEventListener('click', async () => {
+  const job = imageJobs.find(j => j.status === 'running'); if (!job) return;
+  try { await api('POST',`/api/images/jobs/${job.id}/cancel`,{}); showToast('Cancelled. Late results will be discarded; provider costs may still apply.'); }
+  catch (error) {showToast(error.message,true);}
+});
+setInterval(async () => {
+  if (!imageSending || !state.token || !state.conversationId) return;
+  const auth = state.authVersion;
+  try { const data = await api('GET',`/api/images/conversations/${state.conversationId}`); if (auth !== state.authVersion) return; imageJobs = data.jobs; $('cancelImageBtn').hidden = !data.jobs.some(j => j.status === 'running'); }
+  catch (_) { /* Read-only polling; never replays a paid request. */ }
+},1000);

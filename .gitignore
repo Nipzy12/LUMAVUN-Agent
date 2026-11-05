@@ -33,3 +33,14 @@ Thumbs.db
 luma.db
 
 private_uploads/
+
+private_images/
+
+# Disposable Image Studio smoke-test data
+image_studio_smoke.db
+image_studio_smoke.db-*
+image_smoke_uploads/
+image_smoke_assets/
+
+# Operator-reviewed private ComfyUI metadata (the example stays tracked)
+comfyui-manifest.json

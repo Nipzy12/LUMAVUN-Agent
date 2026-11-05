@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, or_, select, update
+from sqlalchemy import and_, exists, or_, select, update, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from luma_core.models import Conversation, ConversationMessage, Task, TaskStatus, ApprovalRequest
@@ -32,10 +32,15 @@ def approval_visibility(target_type, target_id, owner):
 
 
 def audit_visibility(event, owner):
+    from luma_core.models import ImageJob
+    from luma_core.memory.studio_privacy import public_conversation
+    image_owned = exists(select(ImageJob.id).where(
+        ImageJob.id == func.json_extract(case((func.json_valid(event.metadata_), event.metadata_), else_='{}'), '$.job_id'), ImageJob.owner == owner, public_conversation(ImageJob.conversation_id))) if owner else False
     approval_owned = exists(select(ApprovalRequest.id).where(
         ApprovalRequest.id == event.target_id,
         approval_visibility(ApprovalRequest.target_type, ApprovalRequest.target_id, owner)))
-    return and_(approval_visibility(event.target_type, event.target_id, owner),
+    return and_(or_(event.target_type.is_(None), event.target_type != 'image_job', image_owned),
+                approval_visibility(event.target_type, event.target_id, owner),
                 or_(event.target_type.is_(None), event.target_type != 'approval_request', approval_owned))
 
 

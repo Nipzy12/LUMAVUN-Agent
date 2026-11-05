@@ -24,7 +24,7 @@ def mount_office_ui(app: FastAPI) -> None:
         return FileResponse(UI_DIR / 'index.html', media_type='text/html', headers=UI_HEADERS)
 
     async def asset(asset_name: str) -> FileResponse:
-        media = {'app.js': 'text/javascript', 'styles.css': 'text/css'}
+        media = {'app.js': 'text/javascript', 'studio.js': 'text/javascript', 'styles.css': 'text/css'}
         if asset_name not in media:
             raise HTTPException(404, 'Asset not found')
         return FileResponse(UI_DIR / asset_name, media_type=media[asset_name], headers=UI_HEADERS)

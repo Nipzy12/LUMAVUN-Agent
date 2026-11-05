@@ -13,6 +13,7 @@ from luma_core.models import Conversation, ConversationMessage, Task, TaskStatus
 from luma_core.agents.registry import get_task_service
 from luma_core.memory.conversations import now
 from luma_core.providers.prompts import redact_secrets
+from luma_core.memory.studio_privacy import guard_conversation, public_conversation
 
 router = APIRouter(prefix='/api/conversations', tags=['conversations'])
 
@@ -58,6 +59,7 @@ def serialize_message(row):
 
 
 async def owned(session, conversation_id, owner):
+    await guard_conversation(session, conversation_id, owner)
     row = await session.scalar(select(Conversation).where(
         Conversation.id == str(conversation_id), Conversation.owner_identity == owner))
     if row is None:
@@ -80,7 +82,7 @@ async def create_conversation(payload: ConversationInput, owner: str = Depends(g
 @router.get('')
 async def list_conversations(owner: str = Depends(get_owner_identity), session: AsyncSession = Depends(get_db),
                              limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-    rows = (await session.scalars(select(Conversation).where(Conversation.owner_identity == owner)
+    rows = (await session.scalars(select(Conversation).where(Conversation.owner_identity == owner, public_conversation(Conversation.id))
             .order_by(Conversation.updated_at.desc(), Conversation.id).offset(offset).limit(limit))).all()
     return {'items': [serialize_conversation(row) for row in rows]}
 
@@ -101,6 +103,7 @@ async def get_conversation(conversation_id: UUID, owner: str = Depends(get_owner
 @router.patch('/{conversation_id}')
 async def rename_conversation(conversation_id: UUID, payload: ConversationRename,
                               owner: str = Depends(get_owner_identity), session: AsyncSession = Depends(get_db)):
+    await guard_conversation(session, conversation_id, owner)
     changed = await session.execute(update(Conversation).where(
         Conversation.id == str(conversation_id), Conversation.owner_identity == owner
     ).values(title=redact_secrets(payload.title, get_settings()), updated_at=now()))
@@ -113,6 +116,7 @@ async def rename_conversation(conversation_id: UUID, payload: ConversationRename
 async def add_user_message(conversation_id: UUID, payload: UserMessageInput,
                            owner: str = Depends(get_owner_identity), session: AsyncSession = Depends(get_db)):
     # Acquire the SQLite writer lock before checking idempotency or active turns.
+    await guard_conversation(session, conversation_id, owner)
     changed = await session.execute(update(Conversation).where(
         Conversation.id == str(conversation_id), Conversation.owner_identity == owner
     ).values(updated_at=now()))
@@ -122,6 +126,10 @@ async def add_user_message(conversation_id: UUID, payload: UserMessageInput,
     if await session.scalar(select(ChatRequest.id).where(
             ChatRequest.conversation_id == str(conversation_id), ChatRequest.status == 'running')):
         raise HTTPException(409, 'Conversation has an active chat request')
+    from luma_core.models import ImageJob
+    if await session.scalar(select(ImageJob.id).where(
+            ImageJob.conversation_id == str(conversation_id), ImageJob.provider_active.is_(True))):
+        raise HTTPException(409, 'Conversation has an active image request')
     content = redact_secrets(payload.content, get_settings())
     job_type = redact_secrets(payload.job_type, get_settings()) if payload.job_type else None
     existing = await session.scalar(select(ConversationMessage).where(

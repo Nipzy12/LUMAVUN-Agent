@@ -1,3 +1,5 @@
+from luma_core.models.studio import StudioWorkspace, StudioUnlock, StudioAttachment, StudioExecution, LoraPreset, StudioPreference
+from luma_core.models.images import ImageJob, ImageAsset
 from luma_core.models.chat import ChatRequest, ChatAttachment, AttachmentRetention
 from luma_core.models.models import (
     Conversation, ConversationMessage,

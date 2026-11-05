@@ -7,7 +7,7 @@ from luma_core.config import Settings
 
 def redact_secrets(text: str, settings: Settings) -> str:
     secrets = [getattr(settings, name) for name in (
-        'openai_api_key', 'openrouter_api_key', 'anthropic_api_key', 'local_owner_token',
+        'openai_api_key', 'openrouter_api_key', 'anthropic_api_key', 'local_owner_token', 'comfyui_token',
     )]
     values = {secret.get_secret_value() for secret in secrets
               if secret and secret.get_secret_value().strip()}

@@ -56,7 +56,8 @@ class OfficeBrowserTests(unittest.TestCase):
         cls.url = f'http://127.0.0.1:{port}'
         cls.env = dict(os.environ, DATABASE_URL=f'sqlite:///{cls.db}', LOCAL_OWNER_TOKEN=TOKEN,
                        LOCAL_OWNER_ID='browser-owner', APP_DEBUG='false', AI_PROVIDER='unavailable',
-                       LUMA_UI_TEST_PORT=str(port), PYTHONPATH=str(ROOT))
+                       LUMA_UI_TEST_PORT=str(port), PYTHONPATH=str(ROOT), IMAGE_PROVIDER='openai', COMFYUI_ENABLED='true', PRIVATE_STUDIO_ENABLED='true',
+                       IMAGE_STORAGE_DIR=str(Path(cls.directory.name)/'images'), CHAT_ATTACHMENT_DIR=str(Path(cls.directory.name)/'uploads'))
         cls.log = open(Path(cls.directory.name) / 'server.log', 'w')
         cls.start_server()
         cls.api('POST', '/api/agents', {'name': 'Browser worker', 'job_type': 'backend engineer'})
@@ -121,6 +122,129 @@ class OfficeBrowserTests(unittest.TestCase):
         self.approve()
         self.page.get_by_role('button', name='3. Jalankan dengan AI', exact=True).click()
         self.wait_state('selectedTask()?.status === "completed" && state.runningTasks.size === 0')
+
+    def test_image_generation_edit_versions_download_and_reopen(self):
+        self.page.locator('#newTaskBtn').click()
+        self.wait_state('state.conversationId && !state.busy')
+        cid=self.page.evaluate('state.conversationId')
+        self.page.locator('#attachBtn').click()
+        self.page.locator('#generateImageBtn').click()
+        expect(self.page.locator('#imageModel')).to_have_value('gpt-image-2')
+        self.page.locator('#promptInput').fill('A peaceful mountain studio at sunrise')
+        self.page.locator('#sendBtn').click()
+        self.wait_state('!state.busy && imageAssets.length === 1')
+        expect(self.page.locator('[data-image-asset]')).to_have_attribute('src', __import__('re').compile('data:image/png'))
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'image-generation.png'),full_page=True)
+        self.page.get_by_role('button',name='Edit Again',exact=True).click()
+        expect(self.page.locator('#imageReferenceLabel')).to_contain_text('Editing revision')
+        self.page.locator('#promptInput').fill('Add a warm coral sculpture in the foreground')
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'image-editing.png'),full_page=True)
+        self.page.locator('#sendBtn').click()
+        self.wait_state('!state.busy && imageAssets.length === 2')
+        self.page.get_by_role('button',name='View Previous Versions',exact=True).last.click()
+        expect(self.page.locator('#imageVersions img')).to_have_count(2)
+        self.page.locator('#imageVersions').get_by_role('button',name='Close',exact=True).click()
+        with self.page.expect_download() as download:
+            self.page.get_by_role('button',name='Save Image / Download',exact=True).last.click()
+        self.assertTrue(download.value.suggested_filename.endswith('.png'))
+        self.assertTrue(all(m['task_id'] is None for m in self.api('GET',f'/api/conversations/{cid}')['messages']))
+        self.page.reload(); self.connect()
+        self.wait_state('imageAssets.length === 2 && state.messages.length === 4')
+
+    def test_uploaded_reference_edit(self):
+        from io import BytesIO
+        from PIL import Image
+        self.page.locator('#newTaskBtn').click()
+        self.wait_state('state.conversationId && !state.busy')
+        self.page.locator('#attachBtn').click()
+        with self.page.expect_file_chooser() as chooser:
+            self.page.locator('#referenceImageBtn').click()
+        output=BytesIO(); Image.new('RGB',(32,32),'coral').save(output,format='PNG')
+        chooser.value.set_files({'name':'reference.png','mimeType':'image/png','buffer':output.getvalue()})
+        expect(self.page.locator('#attachmentPreview')).to_contain_text('reference.png')
+        self.page.locator('#promptInput').fill('Add a sculpture, preserve the reference colors')
+        self.page.locator('#sendBtn').click()
+        self.wait_state('!state.busy && imageAssets.length === 2')
+        self.assertTrue(self.page.evaluate('imageAssets.some(a => a.source_attachment_id)'))
+        self.page.get_by_role('button',name='View Original',exact=True).click()
+        expect(self.page.locator('#imageVersions img')).to_have_count(1)
+        self.page.evaluate('disconnect()')
+        expect(self.page.locator('#imageVersions')).not_to_be_visible()
+        expect(self.page.locator('#imageVersions img')).to_have_count(0)
+        expect(self.page.locator('[data-image-asset]')).to_have_count(0)
+
+    def test_advanced_model_lora_and_canvas_inpainting(self):
+        self.page.locator('#newTaskBtn').click()
+        self.wait_state('state.conversationId && !state.busy')
+        self.page.locator('#attachBtn').click(); self.page.locator('#advancedStudioBtn').click()
+        expect(self.page.locator('#advancedDialog')).to_be_visible()
+        expect(self.page.locator('#advancedModel')).to_have_value('base')
+        self.page.locator('#modelManager').locator('..').locator('summary').click()
+        expect(self.page.locator('#modelManager')).to_contain_text('Mock test license')
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'model-manager.png'),full_page=True)
+        self.page.locator('#modelManager').locator('..').locator('summary').click()
+        self.page.locator('#loraSection summary').click()
+        self.page.locator('[data-lora="style"]').check()
+        self.page.locator('#advancedPrompt').fill('Fictional adult explorer in a mountain landscape')
+        self.page.locator('#advancedGenerate').click()
+        expect(self.page.locator('#advancedResults img')).to_have_count(1)
+        self.page.locator('#advancedResults').get_by_role('button',name='Use as reference / edit',exact=True).click()
+        expect(self.page.locator('#advancedSourcePreview')).to_have_attribute('src',__import__('re').compile('data:image/png'))
+        self.page.locator('#advancedModel').select_option('mask')
+        self.page.locator('#advancedOperation').select_option('inpaint')
+        self.wait_state("document.getElementById('advancedMask').width > 0")
+        self.page.locator('#advancedMask').scroll_into_view_if_needed()
+        box=self.page.locator('#advancedMask').bounding_box()
+        self.page.mouse.click(box['x']+box['width']/2,box['y']+box['height']/2)
+        self.page.locator('#maskInvert').click();self.page.locator('#maskInvert').click()
+        self.page.locator('#advancedPrompt').fill('Change only the masked area to warm sunset lighting')
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'advanced-inpainting.png'),full_page=True)
+        self.page.locator('#advancedGenerate').click()
+        expect(self.page.locator('#advancedResults figure')).to_have_count(2)
+        self.page.locator('#advancedLock').click()
+        expect(self.page.locator('#advancedDialog')).not_to_be_visible()
+
+    def test_private_gallery_isolation_and_explicit_lock(self):
+        before={r['id'] for r in self.api('GET','/api/conversations')['items']}
+        self.page.locator('#attachBtn').click();self.page.locator('#privateStudioBtn').click()
+        expect(self.page.locator('#privateGate')).to_be_visible()
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'private-locked.png'),full_page=True)
+        for identifier in ['eligibleAdult','fictionalAdults','acceptStudioPolicies']:self.page.locator('#'+identifier).check()
+        self.page.locator('#unlockStudio').click()
+        expect(self.page.locator('#advancedBody')).to_be_visible()
+        self.page.locator('#advancedPrompt').fill('PRIVATE_CANARY fictional adult character artwork')
+        self.page.locator('#advancedGenerate').click()
+        expect(self.page.locator('#advancedResults img')).to_have_count(1)
+        after={r['id'] for r in self.api('GET','/api/conversations')['items']}
+        self.assertEqual(before,after)
+        expect(self.page.locator('#chatThread')).not_to_contain_text('PRIVATE_CANARY')
+        self.assertFalse(self.page.evaluate("Object.values(localStorage).some(v=>v.includes('PRIVATE_CANARY'))"))
+        if os.environ.get('LUMA_UI_ARTIFACT_DIR'):
+            self.page.screenshot(path=str(Path(os.environ['LUMA_UI_ARTIFACT_DIR'])/'private-gallery.png'),full_page=True)
+        self.page.locator('#advancedLock').click()
+        expect(self.page.locator('#advancedResults img')).to_have_count(0)
+        expect(self.page.locator('#advancedPrompt')).to_have_value('')
+        self.page.locator('#attachBtn').click();self.page.locator('#privateStudioBtn').click()
+        expect(self.page.locator('#privateGate')).to_be_visible()
+        expect(self.page.locator('#advancedBody')).not_to_be_visible()
+        self.page.locator('#advancedLock').click()
+
+    def test_private_unlock_expiry_clears_ui_without_clock_dependency(self):
+        def expire_immediately(route):
+            response=route.fetch();data=response.json();data['valid_for_seconds']=0
+            route.fulfill(response=response,json=data)
+        self.page.route('**/api/private-studio/unlock',expire_immediately)
+        self.page.locator('#attachBtn').click();self.page.locator('#privateStudioBtn').click()
+        for identifier in ['eligibleAdult','fictionalAdults','acceptStudioPolicies']:self.page.locator('#'+identifier).check()
+        self.page.locator('#unlockStudio').click()
+        expect(self.page.locator('#advancedDialog')).not_to_be_visible()
+        expect(self.page.locator('#advancedResults img')).to_have_count(0)
+        expect(self.page.locator('#advancedPrompt')).to_have_value('')
 
     def test_direct_chat_sidebar_and_usage(self):
         self.page.locator('#newTaskBtn').click()

@@ -7,7 +7,7 @@ import sys
 from uuid import UUID
 
 from sqlalchemy import delete, select, update
-from luma_core.models import ChatAttachment, AttachmentRetention
+from luma_core.models import ChatAttachment, AttachmentRetention, ImageAsset
 
 PARSER_TIMEOUT = 8
 _parser_slots = asyncio.Semaphore(2)
@@ -77,6 +77,8 @@ async def cleanup_attachments(session, settings, owner):
         removed += 1
     await session.flush()
     known = set((await session.scalars(select(ChatAttachment.id))).all())  # all owners, all conversations
+    # Storage paths may coincide: never classify registered Studio images as upload orphans.
+    known.update((await session.scalars(select(ImageAsset.id))).all())
     orphans = 0
     if root.is_dir():
         for path in root.iterdir():
