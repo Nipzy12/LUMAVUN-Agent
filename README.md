@@ -14,7 +14,7 @@
 - App-private project folders, multiple projects, text file import, editing, share/export, previews
 - AI responses with fenced-code presentation and copy button
 - Cancel a chat/agent request via Stop
-- GitHub CI: typecheck, core tests, Expo dependency checks; Android debug APK build
+- GitHub CI: typecheck, core tests, Expo dependency checks; standalone Android release APK build with bundled JavaScript
 
 **Important:** The orchestrator and file tools run *inside the Android app*. The intelligence is supplied by a remote AI model/provider. This is not an offline on-device LLM and it does not provide shell/terminal execution. Files outside the app's document sandbox are not touched. Approval previews are truncated; carefully review before approving large changes.
 
@@ -40,7 +40,9 @@
 
 ## Android APK
 
-GitHub Actions workflow [Android APK](.github/workflows/android-apk.yml) builds a **debug-signed installable APK** using Expo prebuild and Gradle. Go to Actions → Android APK → Run workflow. If the job succeeds, download the artifact named lumavun-android-debug. Debug APK is for personal testing, NOT a signed Play Store production release.
+GitHub Actions workflow [Android Standalone APK](.github/workflows/android-apk.yml) builds an **offline-bootable standalone Android APK** (release JavaScript bundle embedded, signed with a temporary debug key for internal testing). Go to Actions → Android Standalone APK → Run workflow. When the job succeeds, download the artifact named `lumavun-android-standalone` and install the enclosed `app-release.apk`. It does **not** need Metro or a USB connection to open the UI. AI provider requests still require internet access.
+
+If you installed an earlier `app-debug.apk`, uninstall that version before installing the standalone APK if Android reports a signing conflict. Back up any locally stored chats or project files first, as uninstalling clears app data. This build is for personal testing, **not a production Play Store signing configuration**.
 
 You can also build locally:
 
@@ -49,10 +51,10 @@ npm install
 npx expo install --fix
 npx expo prebuild --platform android --non-interactive
 cd android
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-Output: android/app/build/outputs/apk/debug/app-debug.apk
+Output: android/app/build/outputs/apk/release/app-release.apk
 
 ## Exact limits compared with proprietary assistants
 

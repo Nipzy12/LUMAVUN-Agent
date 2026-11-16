@@ -1,4 +1,4 @@
-name: Android APK
+name: Android Standalone APK
 on:
   workflow_dispatch:
   push:
@@ -31,13 +31,41 @@ jobs:
         run: npm run typecheck
       - name: Test agent safety
         run: npm test
-      - name: Generate Android project
+      - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive --no-install
-      - name: Build debug APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Sign standalone release for personal testing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          source = p.read_text()
+          start = source.find('buildTypes {')
+          if start < 0:
+              raise SystemExit('Cannot find Android buildTypes block')
+          start_release = source.find('release {', start)
+          if start_release < 0:
+              raise SystemExit('Cannot find release build type')
+          left, right = source[:start_release], source[start_release:]
+          # Use the generated debug keystore for an installable internal-test
+          # RELEASE variant. Do NOT use this key for Google Play distribution.
+          right = right.replace('signingConfig signingConfigs.release', 'signingConfig signingConfigs.debug', 1)
+          if 'signingConfig signingConfigs.debug' not in right.split('release {', 1)[1][:1100]:
+              right = right.replace('release {', 'release {\n            signingConfig signingConfigs.debug', 1)
+          p.write_text(left + right)
+          PY
+      - name: Bundle JS and build standalone APK
+        run: cd android && chmod +x gradlew && ./gradlew :app:assembleRelease --no-daemon
+      - name: Verify JS bundle is embedded and APK is signed
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -Z1 "$APK" | grep -Fx 'assets/index.android.bundle'
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
       - uses: actions/upload-artifact@v4
         with:
-          name: lumavun-android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: lumavun-android-standalone
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
