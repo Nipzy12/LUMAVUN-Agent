@@ -25,6 +25,9 @@ export type AgentDependencies = {
   onMutation?(change: { tool: AgentAction; path: string }): void | Promise<void>;
   event(entry: { type: 'assistant' | 'tool'; text: string }): void;
   signal?: AbortSignal;
+  externalTools?: APITool[];
+  externalExecutor?: (name: string, args: Record<string, unknown>) => Promise<string>;
+  approveReads?: boolean;
 };
 
 function checkAbort(signal?: AbortSignal) {
@@ -62,7 +65,7 @@ export async function runCodeAgent(history: APIMessage[], deps: AgentDependencie
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     checkAbort(deps.signal);
-    const response = await deps.complete(messages, CODE_TOOLS, deps.signal);
+    const response = await deps.complete(messages, [...CODE_TOOLS,...(deps.externalTools||[])], deps.signal);
     checkAbort(deps.signal);
     const calls = response.toolCalls;
     messages.push({
@@ -82,9 +85,30 @@ export async function runCodeAgent(history: APIMessage[], deps: AgentDependencie
       let result = '';
       const name = call.function.name as AgentAction;
       try {
-        if (!ALLOWED.has(name)) throw new Error('Tool is not allowed: ' + String(name));
+        const external = (deps.externalTools||[]).find(tool=>tool.function.name===name);
         const args = argsFrom(call);
-        if (MUTATIONS.has(name)) {
+        if (external) {
+          approvals++;
+          const accepted=await deps.approve({
+            id:id('approval'),tool:'external_tool',path:external.function.name,
+            description:'MCP eksternal meminta izin: '+external.function.description.slice(0,150),
+            proposed:JSON.stringify(args,null,2).slice(0,5000)
+          });
+          checkAbort(deps.signal);
+          result=accepted?(await deps.externalExecutor?.(name,args) || 'Tidak ada executor MCP'):'DENIED BY USER. No call sent.';
+        } else {
+        if (!ALLOWED.has(name)) throw new Error('Tool is not allowed: ' + String(name));
+        if (deps.approveReads && (name==='read_file'||name==='list_files')) {
+          approvals++;
+          const accepted=await deps.approve({
+            id:id('approval'),tool:name,path: name==='list_files'?'[daftar proyek]':safePath(textArg(args,'path')),
+            description:'Beri akses baca file proyek?',
+            proposed:JSON.stringify(args,null,2).slice(0,3000)
+          });
+          checkAbort(deps.signal);
+          if(!accepted){result='DENIED BY USER. No file read.';}
+        }
+        if (result!=='DENIED BY USER. No file read.' && MUTATIONS.has(name)) {
           const preview = await deps.workspace.preview(name, args);
           approvals++;
           const accepted = await deps.approve({
@@ -106,8 +130,9 @@ export async function runCodeAgent(history: APIMessage[], deps: AgentDependencie
               deps.event({ type: 'tool', text: 'Artefak gagal diperbarui; perubahan file tetap tersimpan.' });
             }
           }
-        } else {
+        } else if (result!=='DENIED BY USER. No file read.') {
           result = await executeTool(name, args, deps.workspace);
+        }
         }
       } catch (error) {
         result = 'ERROR: ' + (error instanceof Error ? error.message : 'Unexpected tool error');

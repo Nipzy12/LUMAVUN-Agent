@@ -55,7 +55,7 @@ export type AgentAction = 'list_files' | 'read_file' | 'write_file' | 'replace_i
 
 export type Approval = {
   id: string;
-  tool: AgentAction;
+  tool: AgentAction | 'external_tool';
   path: string;
   proposed: string;
   description: string;
