@@ -78,7 +78,7 @@ test('agent emits artifact-sync hook only after an approved successful write', a
       : { content: 'Done', model: 'test', toolCalls: [] },
     approve: async () => true,
     event: () => {},
-    onMutation: async change => changes.push(change.tool + ':' + change.path)
+    onMutation: change => { changes.push(change.tool + ':' + change.path); }
   });
   assert.deepEqual(modified, ['index.html']);
   assert.deepEqual(changes, ['write_file:index.html']);
@@ -95,7 +95,7 @@ test('agent does not publish an artifact after rejected mutation', async () => {
       : { content: 'Denied', model: 'test', toolCalls: [] },
     approve: async () => false,
     event: () => {},
-    onMutation: async change => changes.push(change.tool)
+    onMutation: change => { changes.push(change.tool); }
   });
   assert.deepEqual(modified, []);
   assert.deepEqual(changes, []);
