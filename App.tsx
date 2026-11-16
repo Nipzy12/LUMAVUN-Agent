@@ -303,7 +303,7 @@ function Main() {
 
 
     try {
-      const project=state.projects.find(p=>p.id===target.projectId||p.id===state.selectedProjectId);
+      const project=state.projects.find(p=>p.id===target.projectId||(mainPage==='code'&&p.id===state.selectedProjectId));
       const skillNotes=activeSkillContext(state.extra.skills);
       const memory=state.extra.capabilities.chatMemory?
         state.extra.memoryNotes.slice(-12).map(n=>'- '+n.text.slice(0,600)).join('\n'):'';
@@ -433,7 +433,9 @@ function Main() {
           result=await createCompletion(state.settings,key,
             cloudHistory,{signal:controller.signal});
         } catch(error) {
-          if(!state.extra.capabilities.modelFallback || !installedModelIds().length)throw error;
+          const message=String(error instanceof Error?error.message:error);
+          const transient=/HTTP (429|500|502|503|504)|network|timeout|fetch failed/i.test(message);
+          if(!transient || !state.extra.capabilities.modelFallback || !installedModelIds().length)throw error;
           const local=installedModelIds()[0];
           const fallbackText=await completeLocal(local,[
             {role:'system',content:CHAT_SYSTEM+contextText},

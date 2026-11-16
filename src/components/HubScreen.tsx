@@ -152,7 +152,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         {switchRow('artifacts','Artefak','Simpan snapshot kode hasil Code Agent dan chat')}
         {switchRow('visualizations','Visualisasi dalam chat (BETA)','Pratinjau HTML lokal melalui Artefak')}
         {switchRow('codeTools','Eksekusi kode dan pembuatan file','Menulis file sandbox; tidak menjalankan shell')}
-        {switchRow('modelFallback','Peralihan model saat gagal','Chat cloud dapat beralih ke model lokal terpasang')}
+        {switchRow('modelFallback','Peralihan model saat jaringan bermasalah','Hanya untuk gangguan sementara provider; bukan penolakan keselamatan')}
       </Section>
       <Section title="Memori">
         {switchRow('chatMemory','Pembuatan memori dari chat','Simpan catatan lokal hanya lewat perintah "ingat:"')}
@@ -295,7 +295,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         <TextInput style={[style.input,{margin:12}]} placeholder="Cari model" placeholderTextColor={C.subtle}
           value={modelSearch} onChangeText={setModelSearch}/>
         {cloudModels.length===0&&<Text style={[tiny,{padding:14}]}>Sinkronkan daftar model lewat pengaturan provider.</Text>}
-        {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).slice(0,120).map(m=>
+        {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).map(m=>
           <Row key={m.id} icon={m.id===selectedCloud?'check-circle':'cloud'} title={m.name}
             detail={'Cloud • '+m.id+' • ukuran unduhan tidak berlaku'}
             onPress={()=>onPickCloud(m.id)}/>)}
