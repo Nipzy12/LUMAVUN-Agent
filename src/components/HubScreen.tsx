@@ -299,12 +299,11 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).slice(0,modelLimit).map(m=>
           <Row key={m.id} icon={m.id===selectedCloud?'check-circle':'cloud'} title={m.name}
             detail={'Cloud • '+m.id+' • ukuran unduhan tidak berlaku'}
-            onPress={()=>onPickCloud(m.id)}/>)
+            onPress={()=>onPickCloud(m.id)}/>)}
         {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).length>modelLimit &&
           <Row icon="plus-circle" title="Muat lebih banyak model"
             detail="Tampilkan 120 model berikutnya dari katalog provider"
             onPress={()=>setModelLimit(n=>n+120)}/>}
-}
       </Section>
       <Section title="Model GGUF yang bisa disimpan ke HP">
         {GGUF_CATALOG.map(m=><View key={m.id} style={{padding:14,gap:9,borderBottomWidth:1,borderColor:C.border}}>
