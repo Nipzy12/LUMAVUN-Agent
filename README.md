@@ -5,13 +5,13 @@
 ## What works in source code
 
 - Android-first conversational chat UI, sidebar history, chat search, new/delete conversation
-- Chat and Code Agent toggle in the message composer
+- Separate Chat and Code Work screens, with Chat / Work modes inside the code workspace
 - OpenAI-compatible provider integration with OpenAI, OpenRouter, and custom HTTPS endpoints
 - Direct provider model discovery and model picker/search (no hardcoded models)
 - BYOK stored in Expo SecureStore, local chat history stored in SQLite KV
 - On-device JavaScript agent loop with bounded tool-use rounds and explicit approval gates
 - Code Agent tools: list_files, read_file, write_file, replace_in_file, delete_file
-- App-private project folders, multiple projects, text file import, editing, share/export, previews
+- Searchable Projects page and private project folders, with import, editing, and share/export
 - AI responses with fenced-code presentation and copy button
 - Cancel a chat/agent request via Stop
 - GitHub CI: typecheck, core tests, Expo dependency checks; standalone Android release APK build with bundled JavaScript
@@ -77,11 +77,30 @@ These belong to a follow-on roadmap, not fake buttons. Feature detail is in docs
 - Model text is not a source of native permissions.
 - This is an experimental personal development app, not a security-audited production release.
 
-## LUMAVUN v0.2 • UI & Android Icon
 
-- Halaman chat minimalis dengan pemilih model dan tab bawah Chat, Proyek, Code, Artefak.
-- Sidebar riwayat chat, pencarian, dan avatar profil di bagian bawah.
-- Ketuk avatar untuk membuka Profil. Pengaturan menyediakan nama tampilan, ukuran teks, haptik, opsi sembunyikan bilah tab, akses provider, privasi, dan penghapusan riwayat.
-- Menu Artefak dan mikrofon tidak berpura-pura berfungsi: UI menjelaskan batas fitur.
-- Logo orisinal SVG ada di `assets/lumavun-icon.svg`. Saat `npm install`, Sharp membuat `assets/icon.png` serta `assets/adaptive-icon.png` berukuran 1024 piksel. Kedua gambar dikonfigurasi di `app.json`.
-- App versi 0.2.0, Android versionCode 2; APK standalone berisi JS bundle dan tidak memerlukan Metro.
+## LUMAVUN v0.3: Projects, Code Work, Artifacts
+
+**Proyek** is the searchable local-project index. Create a project with **Proyek baru**, open it to manage code files, or enter **Code → Work** to let the agent work in the selected project.
+
+**Code** contains a Chat/Work switch:
+- **Chat**: discuss code using the chosen AI provider, without file tools.
+- **Work**: the on-device agent can list and read local project files. Writing, replacing or deleting files opens a **per-operation approval modal** with BEFORE/AFTER text. The activity timeline displays assistant messages and tool results. Stop cancels the active request. This is **not** a remote cloud computer and has **no shell**.
+- Approved file writes automatically refresh the project modified date and save an artifact snapshot when the file is smaller than 120k characters. Deleting a project file does not delete existing snapshots.
+
+**Artefak** stores up to 80 private local code snapshots:
+- Assistant responses containing fenced code can be saved via **Simpan kode sebagai artefak**.
+- File edits and imports from **Code Workspace** are saved to the gallery as snapshots.
+- Search saved artifacts and open the detail view to copy or delete, or return to the source project.
+- HTML artifacts have an interactive embedded preview. The WebView runs **only** self-contained HTML/CSS/JS, with CSP blocking network access, external frames, and file access. This is an experimental local preview, not a fully hardened browser sandbox. Do not paste untrusted secrets into HTML previews.
+- JS/TS/TSX/JSX/Python/SVG/Markdown and other text files are displayed as source, **not compiled or executed**. To preview a website, ask Code Agent to create a self-contained \`index.html\` with inline CSS/JS.
+- Existing local chat history, project folders, and API key settings are retained when upgrading from v0.2.
+
+### Getting an Android APK
+
+The standalone workflow builds the **release** JavaScript bundle into \`app-release.apk\` and checks signing plus \`assets/index.android.bundle\`. Open the [Android Standalone APK workflow](.github/workflows/android-apk.yml), choose the latest green run for version **0.3.0 (Android versionCode 3)**, and download the \`lumavun-android-standalone\` artifact. Extract the ZIP to install \`app-release.apk\`.
+
+The artifact is signed with an ephemeral debug key for personal testing. Android may reject in-place upgrades if the key differs across builds. Back up project files and local chat before uninstalling, because uninstalling deletes app-private data. A stable production signing key and backup/restore are not implemented.
+
+### Privacy and limitations
+
+Data and code snapshots live on-device in SQLite KV and private application file storage. They are not encrypted by this starter app. AI requests send user prompts and any agent-read file contents to the selected provider. API keys are in device SecureStore. No hosted workspace, cloud agent, automated code runner, GitHub PR runner, real Canvas editor, or subscription management is claimed.
