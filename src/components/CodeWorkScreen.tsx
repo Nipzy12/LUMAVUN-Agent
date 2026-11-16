@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { Entry, Project } from '../types';
@@ -23,7 +23,6 @@ export function CodeWorkScreen({
   mode, onModeChange, entries, project, busy, draft, onDraft,
   onSend, onStop, onMenu, onWorkspace, onBackToChat
 }: Props) {
-  const scroll = useRef<ScrollView>(null);
   const toolsUsed = entries.filter(e => e.role === 'tool').length;
   return <View style={{flex:1,backgroundColor:C.bg}}>
     <View style={[style.row,{height:65,paddingHorizontal:10}]}>
@@ -56,8 +55,7 @@ export function CodeWorkScreen({
       </View>
       <Feather name="chevron-right" size={18} color={C.muted}/>
     </Pressable>
-    <ScrollView ref={scroll} style={{flex:1}} keyboardShouldPersistTaps="handled"
-      onContentSizeChange={()=>scroll.current?.scrollToEnd({animated:true})}
+    <ScrollView style={{flex:1}} keyboardShouldPersistTaps="handled"
       contentContainerStyle={{paddingHorizontal:18,paddingTop:20,paddingBottom:26,flexGrow:1}}>
       {entries.length === 0 ? <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:14}}>
         <Logo size={72}/>
