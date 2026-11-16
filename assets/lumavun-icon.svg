@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <radialGradient id="sky" cx=".57" cy=".26" r=".88"><stop offset="0" stop-color="#241549"/><stop offset=".56" stop-color="#14102e"/><stop offset="1" stop-color="#080d23"/></radialGradient>
+  <linearGradient id="moon" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff7d9"/><stop offset=".48" stop-color="#f9d2ff"/><stop offset="1" stop-color="#a993ff"/></linearGradient>
+  <linearGradient id="border" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#d1a6ff"/><stop offset=".56" stop-color="#664bb5"/><stop offset="1" stop-color="#3a245e"/></linearGradient>
+  <linearGradient id="fog" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a17eea" stop-opacity=".9"/><stop offset="1" stop-color="#2a1a5b" stop-opacity=".45"/></linearGradient>
+  <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="22"/></filter>
+  <clipPath id="rounded"><rect x="24" y="24" width="976" height="976" rx="206"/></clipPath>
+</defs>
+<g clip-path="url(#rounded)">
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <circle cx="460" cy="450" r="240" fill="#7753c8" opacity=".24" filter="url(#glow)"/>
+  <path d="M634 147C482 123 313 242 292 402C269 578 408 729 609 727C464 686 398 600 405 484C409 341 493 226 634 147Z" fill="url(#moon)"/>
+  <path d="M755 184L775 237L828 256L775 275L755 328L735 275L682 256L735 237Z" fill="#fff4d4"/>
+  <path d="M755 208L768 242L802 256L768 269L755 303L742 269L708 256L742 242Z" fill="#ffffff" opacity=".5"/>
+  <path d="M-130 791C25 681 106 684 231 753C348 665 430 669 554 752C693 670 788 683 1139 790V1100H-130Z" fill="#624394" opacity=".77"/>
+  <path d="M-150 857C85 736 204 754 327 823C476 720 597 756 722 811C840 729 959 768 1169 842V1080H-150Z" fill="url(#fog)" opacity=".76"/>
+  <path d="M-150 919C53 834 172 850 326 909C488 839 615 869 741 922C871 850 989 879 1170 926V1110H-150Z" fill="#2b1b60" opacity=".9"/>
+  <path d="M-100 981C80 923 221 945 337 964C501 911 669 934 763 967C893 914 1049 955 1110 984V1110H-100Z" fill="#161333"/>
+</g>
+<rect x="24" y="24" width="976" height="976" rx="206" fill="none" stroke="url(#border)" stroke-width="17"/>
+</svg>
