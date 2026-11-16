@@ -7,17 +7,22 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
 import { ChatView } from './src/components/ChatView';
+import { ProjectsScreen } from './src/components/ProjectsScreen';
+import { CodeWorkScreen } from './src/components/CodeWorkScreen';
+import { ArtifactsScreen } from './src/components/ArtifactsScreen';
+import { ArtifactDetail } from './src/components/ArtifactDetail';
 import { AccountScreen } from './src/components/AccountScreen';
 import { ModelSheet } from './src/components/ModelSheet';
 import { SettingsSheet } from './src/components/SettingsSheet';
 import { WorkspaceSheet } from './src/components/WorkspaceSheet';
 import { id } from './src/paths';
+import { fencedCode, saveArtifact as snapshotArtifact, MAX_ARTIFACT_TEXT } from './src/artifacts';
 import { createCompletion, fetchModels, type APIMessage } from './src/provider';
 import { CHAT_SYSTEM } from './src/prompts';
 import { INITIAL_STATE, loadSecret, loadState, saveSecret, saveState, type LocalState } from './src/store';
-import type { Approval, Conversation, Entry, ModelInfo, Project, Settings } from './src/types';
+import type { Approval, Conversation, Entry, ModelInfo, Project, Settings, UserArtifact } from './src/types';
 import { ActionIcon, C, Logo, PrimaryButton, style } from './src/ui';
-import { createWorkspaceTools } from './src/workspace';
+import { createWorkspaceTools, createProjectFolder, readProjectFile } from './src/workspace';
 
 function newEntry(role: Entry['role'], text: string): Entry {
   return { id: id('msg'), role, text, createdAt: Date.now() };
@@ -38,6 +43,9 @@ function Main() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [draft, setDraft] = useState('');
   const [modeDraft, setModeDraft] = useState<'chat' | 'code'>('chat');
+  const [mainPage, setMainPage] = useState<'chat' | 'projects' | 'code' | 'artifacts'>('chat');
+  const [codeViewMode, setCodeViewMode] = useState<'chat' | 'work'>('work');
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -75,6 +83,7 @@ function Main() {
   const current = state.chats.find(c => c.id === state.selectedChatId);
   const mode = current?.mode || modeDraft;
   const activeProject = state.projects.find(p => p.id === state.selectedProjectId);
+  const selectedArtifact = state.artifacts.find(a => a.id === selectedArtifactId);
 
   function addEntry(chatId: string, role: Entry['role'], text: string) {
     setState(previous => ({
@@ -86,7 +95,7 @@ function Main() {
       } : chat)
     }));
   }
-  function startNewChat(nextMode: 'chat' | 'code' = mode) {
+  function startNewChat(nextMode: 'chat' | 'code' = mainPage === 'code' ? 'code' : 'chat') {
     if (busy) { setNotice('Stop the running response before switching chat.'); return; }
     const next = newConversation(nextMode, state.settings.model);
     setState(s => ({ ...s, chats: [next, ...s.chats], selectedChatId: next.id }));
@@ -94,6 +103,76 @@ function Main() {
     setDraft('');
     setSidebarOpen(false);
   }
+
+  function navigate(page: 'chat' | 'projects' | 'code' | 'artifacts') {
+    if (busy) { setNotice('Hentikan agent yang sedang bekerja sebelum berpindah halaman.'); return; }
+    setSidebarOpen(false);
+    setSelectedArtifactId(null);
+    setAccountPage(null);
+    setMainPage(page);
+    if (page === 'chat' || page === 'code') {
+      const modeForPage = page === 'code' ? 'code' : 'chat';
+      setModeDraft(modeForPage);
+      setState(previous => {
+        const selected = previous.chats.find(c => c.id === previous.selectedChatId);
+        if (selected?.mode === modeForPage) return previous;
+        const match = previous.chats.filter(c => c.mode === modeForPage)
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (match) return { ...previous, selectedChatId: match.id };
+        const next = newConversation(modeForPage, previous.settings.model);
+        return { ...previous, chats: [next, ...previous.chats], selectedChatId: next.id };
+      });
+    }
+  }
+
+  function handleCreateProject(name: string) {
+    try {
+      const now = Date.now();
+      const project: Project = { id: id('project'), name, createdAt: now, updatedAt: now };
+      createProjectFolder(project.id);
+      handleProject(project);
+      setWorkspaceOpen(true);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Gagal membuat proyek.');
+    }
+  }
+
+  function saveFileArtifact(projectId: string, filePath: string, content: string) {
+    setState(previous => {
+      const projects = previous.projects.map(p => p.id === projectId ? { ...p, updatedAt: Date.now() } : p);
+      if (content.length > MAX_ARTIFACT_TEXT) return { ...previous, projects };
+      try {
+        const artifacts = snapshotArtifact(previous.artifacts, {
+          title: filePath.split('/').pop() || filePath,
+          path: filePath,
+          projectId,
+          content
+        });
+        return { ...previous, projects, artifacts };
+      } catch {
+        return { ...previous, projects };
+      }
+    });
+  }
+
+  function saveChatArtifact(entry: Entry) {
+    const code = fencedCode(entry.text);
+    if (!code) { setNotice('Tidak ditemukan blok kode yang bisa disimpan.'); return; }
+    try {
+      setState(previous => ({
+        ...previous,
+        artifacts: snapshotArtifact(previous.artifacts, {
+          title: 'Hasil Chat ' + code.extension.toUpperCase(),
+          path: 'chat/' + entry.id + '.' + code.extension,
+          content: code.content
+        })
+      }));
+      setNotice('Kode berhasil disimpan ke galeri Artefak.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Tidak bisa menyimpan artefak.');
+    }
+  }
+
   function setConversationMode(next: 'chat' | 'code') {
     setModeDraft(next);
     if (current) {
@@ -152,13 +231,15 @@ function Main() {
       setSettingsOpen(true);
       return;
     }
-    if (mode === 'code' && !state.selectedProjectId) {
+    if (mainPage === 'code' && codeViewMode === 'work' && !state.selectedProjectId) {
       setNotice('Create or choose a Code Workspace first.');
       setWorkspaceOpen(true);
       return;
     }
 
-    const target = current || newConversation(mode, state.settings.model);
+    const conversationMode = mainPage === 'code' ? 'code' : 'chat';
+    const target = (current?.mode === conversationMode ? current : undefined)
+      || newConversation(conversationMode, state.settings.model);
     const nextEntries = [...target.entries, newEntry('user', content)];
     const chatId = target.id;
     setState(previous => {
@@ -186,7 +267,7 @@ function Main() {
       .map(e => ({ role: e.role as 'user' | 'assistant', content: e.text }));
 
     try {
-      if (mode === 'code') {
+      if (mainPage === 'code' && codeViewMode === 'work') {
         const projectId = state.selectedProjectId;
         await runCodeAgent(messages, {
           workspace: createWorkspaceTools(projectId),
@@ -194,6 +275,17 @@ function Main() {
           complete: (history, tools, signal) =>
             createCompletion(state.settings, key, history, { tools, signal }),
           event: event => addEntry(chatId, event.type === 'tool' ? 'tool' : 'assistant', event.text),
+          onMutation: async ({ tool, path }) => {
+            if (tool === 'delete_file') {
+              setState(previous => ({
+                ...previous,
+                projects: previous.projects.map(p => p.id === projectId ? { ...p, updatedAt: Date.now() } : p)
+              }));
+              return;
+            }
+            const text = await readProjectFile(projectId, path);
+            saveFileArtifact(projectId, path, text);
+          },
           approve: action => new Promise(resolve => {
             if (controller.signal.aborted) { resolve(false); return; }
             approvalResolve.current = resolve;
@@ -217,6 +309,11 @@ function Main() {
       if (approvalResolve.current) finishApproval(false);
       setBusy(false);
     }
+  }
+
+  function removeArtifact(artifactId: string) {
+    setState(previous => ({ ...previous, artifacts: previous.artifacts.filter(a => a.id !== artifactId) }));
+    setSelectedArtifactId(null);
   }
 
   function clearAllChats() {
@@ -267,105 +364,107 @@ function Main() {
     <StatusBar barStyle="light-content" />
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
 
+
       {!accountPage ? <>
-      <View style={[style.row, {
-        height: 58, paddingHorizontal: 12
-      }]}>
-        <ActionIcon name="menu" onPress={() => setSidebarOpen(true)} size={23} />
-        <Pressable style={[style.row, { flex: 1, justifyContent: 'center', gap: 7 }]}
-          onPress={() => setModelsOpen(true)}>
-          <Text style={{ color: C.text, fontWeight: '700', fontSize: 17, letterSpacing: .6 }}>LUMAVUN</Text>
-          <Feather name="chevron-down" size={14} color={C.muted} />
-        </Pressable>
-        <ActionIcon name="edit" onPress={() => startNewChat()} size={21} />
-      </View>
-      <ChatView entries={current?.entries || []} busy={busy} mode={mode}
-        name={state.profile.name} largeText={state.profile.largeText} onSuggestion={setDraft} />
-
-      {!!notice && <Pressable onPress={() => setNotice('')}
-        style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: C.surface }}>
-        <Text style={{ color: C.gold, fontSize: 12 }} numberOfLines={3}>{notice}  ×</Text>
-      </Pressable>}
-
-
-      <View style={{
-        backgroundColor: C.bg, paddingHorizontal: 13, paddingTop: 8, paddingBottom: 8
-      }}>
-        <View style={{
-          backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
-          borderRadius: 24, paddingHorizontal: 9, paddingTop: 5, paddingBottom: 7
-        }}>
-          <TextInput value={draft} onChangeText={setDraft}
-            accessibilityLabel="Pesan untuk LUMAVUN"
-            placeholder={mode === 'code' ? 'Tulis instruksi Code Agent…' : 'Chat dengan LUMAVUN…'}
-            placeholderTextColor={C.subtle} multiline maxLength={12000} editable={!busy}
-            style={{
-              color: C.text, fontSize: state.profile.largeText ? 18 : 16,
-              paddingHorizontal: 10, paddingVertical: 12, maxHeight: 128, minHeight: 54
-            }} textAlignVertical="top" />
-          <View style={[style.row, { gap: 4 }]}>
-            <ActionIcon name="plus" color={C.muted} onPress={() => setWorkspaceOpen(true)} size={21} />
-            <Pressable onPress={() => setModelsOpen(true)} style={[style.row, {
-              borderRadius: 19, backgroundColor: C.raised,
-              paddingHorizontal: 13, paddingVertical: 10, gap: 6,
-              maxWidth: 208
-            }]}>
-              <Feather name="cpu" size={13} color={C.accent} />
-              <Text style={{ color: C.text, fontSize: 12, fontWeight: '600', flexShrink: 1 }}
-                numberOfLines={1}>
-                {state.settings.model ? state.settings.model.split('/').pop() : 'Pilih model'}
-              </Text>
-              <Feather name="chevron-down" size={12} color={C.muted} />
+      {selectedArtifact ? <ArtifactDetail
+        artifact={selectedArtifact}
+        onClose={() => setSelectedArtifactId(null)}
+        onDelete={removeArtifact}
+        onSource={projectId => {
+          setState(prev => ({ ...prev, selectedProjectId: projectId }));
+          setSelectedArtifactId(null);
+          setMainPage('projects');
+          setWorkspaceOpen(true);
+        }}
+      /> : <>
+        {mainPage === 'chat' && <>
+          <View style={[style.row,{height:58,paddingHorizontal:12}]}>
+            <ActionIcon name="menu" onPress={()=>setSidebarOpen(true)} size={23}/>
+            <Pressable onPress={()=>setModelsOpen(true)}
+              style={[style.row,{flex:1,justifyContent:'center',gap:7}]}>
+              <Text style={{color:C.text,fontWeight:'700',fontSize:17,letterSpacing:.6}}>LUMAVUN</Text>
+              <Feather name="chevron-down" color={C.muted} size={14}/>
             </Pressable>
-            <View style={{ flex: 1 }} />
-            <ActionIcon name="mic" color={C.subtle} size={19}
-              onPress={() => Alert.alert('Suara', 'Voice chat belum tersedia di versi ini.')} />
-            <Pressable accessibilityRole="button" accessibilityLabel={busy ? 'Hentikan respons' : 'Kirim pesan'}
-              onPress={busy ? stop : () => { void sendMessage(); }} disabled={!busy && !draft.trim()}
-              style={{
-                backgroundColor: busy ? C.raised : C.accent,
-                opacity: busy || draft.trim() ? 1 : .4,
-                height: 39, width: 39, borderRadius: 20, alignItems: 'center', justifyContent: 'center'
-              }}>
-              <Feather name={busy ? 'square' : 'arrow-up'} size={18} color={busy ? C.text : C.bg} />
-            </Pressable>
+            <ActionIcon name="edit" onPress={()=>startNewChat('chat')}/>
           </View>
-        </View>
-      </View>
-      {!state.profile.hideTabs && <View style={{
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-        backgroundColor: C.surface, borderRadius: 26, marginHorizontal: 13, marginBottom: 8,
-        padding: 4, borderWidth: 1, borderColor: C.border
-      }}>
-        {([
-          { id: 'chat', icon: 'message-circle', label: 'Chat' },
-          { id: 'project', icon: 'folder', label: 'Proyek' },
-          { id: 'code', icon: 'code', label: 'Code' },
-          { id: 'artifact', icon: 'layers', label: 'Artefak' }
-        ] as const).map(item => {
-          const active = (item.id === 'code' && mode === 'code') ||
-            (item.id === 'chat' && mode === 'chat');
-          return <Pressable key={item.id} accessibilityRole="tab" accessibilityState={{ selected: active }}
-            onPress={() => {
-              if (item.id === 'chat') setConversationMode('chat');
-              if (item.id === 'code') setConversationMode('code');
-              if (item.id === 'project') setWorkspaceOpen(true);
-              if (item.id === 'artifact') {
-                Alert.alert('Artefak', 'Artefak interaktif belum tersedia. File kode hasil agent dapat dilihat melalui menu Proyek.');
-              }
-            }}
-            style={{
-              flex: 1, alignItems: 'center', justifyContent: 'center',
-              paddingVertical: 10, borderRadius: 22,
-              backgroundColor: active ? C.accentDeep : 'transparent', gap: 5
-            }}>
-            <Feather name={item.icon} size={20} color={active ? C.text : C.muted} />
-            <Text style={{ color: active ? C.text : C.muted, fontSize: 11, fontWeight: active ? '700' : '500' }}>
+          <ChatView entries={current?.mode==='chat'?current.entries:[]}
+            mode="chat" busy={busy} name={state.profile.name}
+            largeText={state.profile.largeText} onSuggestion={setDraft} onSaveCode={saveChatArtifact}/>
+          <View style={{paddingHorizontal:13,paddingVertical:8}}>
+            <View style={{backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:23,paddingHorizontal:9,paddingTop:5,paddingBottom:7}}>
+              <TextInput value={draft} onChangeText={setDraft}
+                accessibilityLabel="Pesan untuk LUMAVUN"
+                placeholder="Chat dengan LUMAVUN…" placeholderTextColor={C.subtle}
+                multiline maxLength={12000} editable={!busy}
+                style={{color:C.text,fontSize:state.profile.largeText?18:16,minHeight:50,maxHeight:135,paddingHorizontal:10,paddingVertical:12}}
+                textAlignVertical="top"/>
+              <View style={[style.row,{gap:4}]}>
+                <ActionIcon name="plus" onPress={()=>setWorkspaceOpen(true)} color={C.muted} size={21}/>
+                <Pressable onPress={()=>setModelsOpen(true)}
+                  style={[style.row,{backgroundColor:C.raised,borderRadius:19,paddingHorizontal:13,paddingVertical:10,gap:6,maxWidth:218}]}>
+                  <Feather name="cpu" size={14} color={C.accent}/>
+                  <Text style={{color:C.text,fontSize:12,fontWeight:'600',flexShrink:1}} numberOfLines={1}>
+                    {state.settings.model?state.settings.model.split('/').pop():'Pilih model'}
+                  </Text>
+                  <Feather name="chevron-down" size={12} color={C.muted}/>
+                </Pressable>
+                <View style={{flex:1}}/>
+                <Pressable onPress={busy?stop:()=>void sendMessage()}
+                  disabled={!busy&&!draft.trim()}
+                  style={{height:40,width:40,borderRadius:20,backgroundColor:busy?C.raised:C.accent,
+                    opacity:busy||draft.trim()?1:.4,alignItems:'center',justifyContent:'center'}}>
+                  <Feather name={busy?'square':'arrow-up'} size={18} color={busy?C.text:C.bg}/>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </>}
+        {mainPage === 'projects' && <ProjectsScreen
+          projects={state.projects} selectedProjectId={state.selectedProjectId}
+          onMenu={()=>setSidebarOpen(true)}
+          onOpen={projectId=>{
+            setState(previous=>({...previous,selectedProjectId:projectId}));
+            setWorkspaceOpen(true);
+          }}
+          onCreate={handleCreateProject}
+        />}
+        {mainPage === 'code' && <CodeWorkScreen
+          mode={codeViewMode} onModeChange={setCodeViewMode}
+          entries={current?.mode==='code'?current.entries:[]}
+          project={activeProject} busy={busy} draft={draft} onDraft={setDraft}
+          onMenu={()=>setSidebarOpen(true)} onWorkspace={()=>setWorkspaceOpen(true)}
+          onSend={()=>void sendMessage()} onStop={stop}
+          onBackToChat={()=>navigate('chat')}
+        />}
+        {mainPage === 'artifacts' && <ArtifactsScreen
+          artifacts={state.artifacts} onMenu={()=>setSidebarOpen(true)}
+          onOpen={setSelectedArtifactId} onGoToCode={()=>navigate('code')}
+        />}
+        {!!notice && <Pressable onPress={()=>setNotice('')}
+          style={{paddingHorizontal:16,paddingVertical:7,backgroundColor:C.surface}}>
+          <Text style={{color:C.gold,fontSize:12}} numberOfLines={3}>{notice} ×</Text>
+        </Pressable>}
+        {!state.profile.hideTabs && <View style={[style.row,{
+          backgroundColor:C.surface,borderRadius:25,marginHorizontal:12,marginBottom:8,
+          padding:4,borderColor:C.border,borderWidth:1
+        }]}>
+          {([
+            {page:'chat',icon:'message-circle',label:'Chat'},
+            {page:'projects',icon:'folder',label:'Proyek'},
+            {page:'code',icon:'code',label:'Code'},
+            {page:'artifacts',icon:'layers',label:'Artefak'}
+          ] as const).map(item=><Pressable key={item.page}
+            accessibilityRole="tab" accessibilityState={{selected:mainPage===item.page}}
+            onPress={()=>navigate(item.page)}
+            style={{flex:1,alignItems:'center',paddingVertical:10,gap:5,
+              borderRadius:22,backgroundColor:mainPage===item.page?C.raised:'transparent'}}>
+            <Feather name={item.icon} size={19} color={mainPage===item.page?C.accent:C.muted}/>
+            <Text style={{color:mainPage===item.page?C.text:C.muted,fontSize:11,fontWeight:mainPage===item.page?'700':'500'}}>
               {item.label}
             </Text>
-          </Pressable>;
-        })}
-      </View>}
+          </Pressable>)}
+        </View>}
+      </>}
       </> : <AccountScreen
         screen={accountPage}
         profile={state.profile}
@@ -420,10 +519,10 @@ function Main() {
             <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>Chat baru</Text>
           </Pressable>
           {([
-            { label: 'Chat', icon: 'message-circle', press: () => { setSidebarOpen(false); setAccountPage(null); } },
-            { label: 'Proyek', icon: 'folder', press: () => { setSidebarOpen(false); setWorkspaceOpen(true); } },
-            { label: 'Code Agent', icon: 'code', press: () => { setSidebarOpen(false); setConversationMode('code'); } },
-            { label: 'Artefak', icon: 'layers', press: () => Alert.alert('Artefak', 'Fitur artefak interaktif belum tersedia; gunakan proyek untuk file kode.') },
+            { label: 'Chat', icon: 'message-circle', press: () => navigate('chat') },
+            { label: 'Proyek', icon: 'folder', press: () => navigate('projects') },
+            { label: 'Code Agent', icon: 'code', press: () => navigate('code') },
+            { label: 'Artefak', icon: 'layers', press: () => navigate('artifacts') },
             { label: 'Pengaturan', icon: 'settings', press: () => openAccount('settings') }
           ] as const).map(item => (
             <Pressable key={item.label} style={[style.row, { gap: 15, paddingHorizontal: 12, paddingVertical: 12 }]}
@@ -487,7 +586,8 @@ function Main() {
       current={state.settings.model} models={models} onPick={handlePickModel} />
     <WorkspaceSheet open={workspaceOpen} onClose={() => setWorkspaceOpen(false)}
       projects={state.projects} activeId={state.selectedProjectId}
-      onCreate={handleProject} onSelect={projectId => setState(s => ({ ...s, selectedProjectId: projectId }))} />
+      onCreate={handleProject} onSelect={projectId => setState(s => ({ ...s, selectedProjectId: projectId }))}
+      onFileSaved={saveFileArtifact} />
 
     <Modal visible={!!approval} transparent animationType="fade" onRequestClose={() => finishApproval(false)}>
       <View style={{ flex: 1, padding: 17, backgroundColor: '#02030BCC', justifyContent: 'center' }}>
