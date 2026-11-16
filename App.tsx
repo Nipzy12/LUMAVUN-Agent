@@ -232,7 +232,7 @@ function Main() {
   </SafeAreaView>;
 
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
-    <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    <StatusBar barStyle="light-content" />
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <View style={[style.row, {
         height: 62, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: C.border
