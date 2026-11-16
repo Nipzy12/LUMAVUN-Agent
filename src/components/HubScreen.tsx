@@ -58,6 +58,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  const [progress,setProgress]=useState(0);
  const [installed,setInstalled]=useState<string[]>([]);
  const [modelSearch,setModelSearch]=useState('');
+ const [modelLimit,setModelLimit]=useState(120);
  const [note,setNote]=useState('');
  const [locStatus,setLocStatus]=useState('Belum diperiksa');
  const [calendarStatus,setCalendarStatus]=useState('Belum diperiksa');
@@ -293,12 +294,17 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
       <Section title="Provider cloud">
         <Row icon="settings" title="Pengaturan API provider" detail="Kunci tersimpan aman" onPress={onProvider}/>
         <TextInput style={[style.input,{margin:12}]} placeholder="Cari model" placeholderTextColor={C.subtle}
-          value={modelSearch} onChangeText={setModelSearch}/>
+          value={modelSearch} onChangeText={value=>{setModelSearch(value);setModelLimit(120)}}/>
         {cloudModels.length===0&&<Text style={[tiny,{padding:14}]}>Sinkronkan daftar model lewat pengaturan provider.</Text>}
-        {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).map(m=>
+        {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).slice(0,modelLimit).map(m=>
           <Row key={m.id} icon={m.id===selectedCloud?'check-circle':'cloud'} title={m.name}
             detail={'Cloud • '+m.id+' • ukuran unduhan tidak berlaku'}
-            onPress={()=>onPickCloud(m.id)}/>)}
+            onPress={()=>onPickCloud(m.id)}/>)
+        {cloudModels.filter(m=>(m.id+m.name).toLowerCase().includes(modelSearch.toLowerCase())).length>modelLimit &&
+          <Row icon="plus-circle" title="Muat lebih banyak model"
+            detail="Tampilkan 120 model berikutnya dari katalog provider"
+            onPress={()=>setModelLimit(n=>n+120)}/>}
+}
       </Section>
       <Section title="Model GGUF yang bisa disimpan ke HP">
         {GGUF_CATALOG.map(m=><View key={m.id} style={{padding:14,gap:9,borderBottomWidth:1,borderColor:C.border}}>
