@@ -1,0 +1,18 @@
+{
+  "name": "lumavun-agent",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/api"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @lumavun/api",
+    "typecheck": "npm run typecheck -w @lumavun/api",
+    "test": "npm run test -w @lumavun/api",
+    "build": "npm run build -w @lumavun/api",
+    "start": "npm run start -w @lumavun/api"
+  }
+}
