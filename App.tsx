@@ -153,9 +153,9 @@ function Main() {
   }
 
   function saveFileArtifact(projectId: string, filePath: string, content: string) {
-    if (!state.extra.capabilities.artifacts) return;
     setState(previous => {
       const projects = previous.projects.map(p => p.id === projectId ? { ...p, updatedAt: Date.now() } : p);
+      if (!previous.extra.capabilities.artifacts) return { ...previous, projects };
       if (content.length > MAX_ARTIFACT_TEXT) return { ...previous, projects };
       try {
         const artifacts = snapshotArtifact(previous.artifacts, {

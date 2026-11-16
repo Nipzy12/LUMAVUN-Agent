@@ -62,7 +62,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  const [locStatus,setLocStatus]=useState('Belum diperiksa');
  const [calendarStatus,setCalendarStatus]=useState('Belum diperiksa');
  const [showAddMenu,setShowAddMenu]=useState(false);
- const [discover,setDiscover]=useState(true);
+
  const [details,setDetails]=useState('');
  useEffect(()=>{setInstalled(installedModelIds());},[page,modelBusy]);
  useEffect(()=>{if(page==='permissions'){
@@ -138,7 +138,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    </View>
    {page==='connectors'&&showAddMenu&&<View style={{position:'absolute',top:60,right:12,zIndex:5,
      backgroundColor:C.raised,borderRadius:16,padding:8,minWidth:220}}>
-     <Pressable onPress={()=>{setShowAddMenu(false);setDiscover(x=>!x)}} style={{padding:14}}>
+     <Pressable onPress={()=>{setShowAddMenu(false);change({connectorDiscovery:!extra.connectorDiscovery})}} style={{padding:14}}>
        <Text style={style.txt}>Jelajahi konektor</Text>
      </Pressable>
      <Pressable onPress={()=>{setShowAddMenu(false);setAddConnector(true)}} style={{padding:14}}>
@@ -177,7 +177,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
     {page==='connectors'&&<>
       <Section title="Penemuan konektor">
         <Row icon="grid" title="Jelajahi konektor" detail="Temukan konektor yang ditambahkan ke aplikasi"
-          right={<Switch value={discover} onValueChange={setDiscover}/>}/>
+          right={<Switch value={extra.connectorDiscovery} onValueChange={v=>change({connectorDiscovery:v})}/>}/>
       </Section>
       <Section title="MCP Server yang dikonfigurasi">
         {extra.connectors.length===0&&<Text style={[tiny,{padding:18}]}>Belum ada MCP server. Tambahkan URL endpoint milikmu melalui tombol +.</Text>}
@@ -209,7 +209,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
           {(mcpTools[item.id]||[]).slice(0,25).map(t=><Text key={t.name} style={{color:C.muted,fontSize:12}}>• {t.name}</Text>)}
         </View>)}
       </Section>
-      {discover&&<Section title="Contoh integrasi yang dapat dikonfigurasi">
+      {extra.connectorDiscovery&&<Section title="Contoh integrasi yang dapat dikonfigurasi">
         {['Alpha Vantage MCP','Financial Modeling Prep','Gmail','Google Drive','Higgsfield','TakeProfit','MT5 MCP Server'].map(name=>
           <Row key={name} icon="server" title={name} detail="Tidak terhubung • tambahkan endpoint milikmu"
             onPress={()=>{setConnectorName(name);setAddConnector(true)}}/>)}

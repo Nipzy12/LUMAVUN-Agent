@@ -12,6 +12,7 @@ export type LocalModelInfo = { id:string; name:string; sizeBytes:number; url:str
 
 export type ExtraState = {
   capabilities:CapabilityState;
+  connectorDiscovery:boolean;
   connectors:Connector[];
   skills:Skill[];
   memoryNotes:MemoryNote[];
@@ -20,7 +21,7 @@ export type ExtraState = {
   localModelInstalled:string[];
 };
 export const DEFAULT_EXTRA: ExtraState = {
-  capabilities:DEFAULT_CAPABILITIES,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
+  capabilities:DEFAULT_CAPABILITIES,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
   localModelId:'',localModelInstalled:[]
 };
 export function withExtra(raw: Partial<ExtraState>):ExtraState {
