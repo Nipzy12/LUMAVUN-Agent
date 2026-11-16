@@ -1,0 +1,44 @@
+name: Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'App.tsx'
+      - 'src/**'
+      - 'app.json'
+      - 'package.json'
+      - 'tsconfig.json'
+      - '.github/workflows/android-apk.yml'
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Verify Expo dependencies
+        run: npx expo install --check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test agent safety
+        run: npm test
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --non-interactive --no-install
+      - name: Build debug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumavun-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "LUMAVUN",
+    "slug": "lumavun-agent",
+    "scheme": "lumavun",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.lumavun.agent",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "permissions": []
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-document-picker"
+    ],
+    "extra": {
+      "brand": "LUMAVUN"
+    }
+  }
+}
