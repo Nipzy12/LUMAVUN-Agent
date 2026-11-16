@@ -44,13 +44,13 @@ GitHub Actions workflow [Android APK](.github/workflows/android-apk.yml) builds 
 
 You can also build locally:
 
-\`\`\`bash
+```bash
 npm install
 npx expo install --fix
 npx expo prebuild --platform android --non-interactive
 cd android
 ./gradlew assembleDebug
-\`\`\`
+```
 
 Output: android/app/build/outputs/apk/debug/app-debug.apk
 
