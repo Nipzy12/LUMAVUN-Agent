@@ -16,11 +16,12 @@ type Props = {
 export function ProjectsScreen({ projects, selectedProjectId, onMenu, onOpen, onCreate }: Props) {
   const [search, setSearch] = useState('');
   const [sortByName, setSortByName] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const visible = useMemo(() => projects
-    .filter(p => !p.archived && p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(p => !!p.archived === showArchived && p.name.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a,b) => sortByName ? a.name.localeCompare(b.name)
       : (Number(b.pinned)-Number(a.pinned)) || (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)), [projects,search,sortByName]);
 
@@ -47,15 +48,22 @@ export function ProjectsScreen({ projects, selectedProjectId, onMenu, onOpen, on
         <TextInput value={search} onChangeText={setSearch} placeholder="Cari proyek"
           placeholderTextColor={C.subtle} style={{color:C.text,fontSize:16,flex:1}}/>
       </View>
-      <Text style={{color:C.subtle,marginTop:10,fontSize:11}}>
-        {sortByName ? 'Diurutkan berdasarkan nama' : 'Diurutkan berdasarkan terakhir diedit'}
-      </Text>
+      <View style={[style.row,{justifyContent:'space-between',paddingTop:7}]}>
+        <Text style={{color:C.subtle,fontSize:11}}>
+          {sortByName ? 'Berdasarkan nama' : 'Terakhir diedit'}
+        </Text>
+        <Pressable onPress={()=>setShowArchived(v=>!v)}
+          style={[style.row,{padding:9,gap:6,borderRadius:12,backgroundColor:C.raised}]}>
+          <Feather name="archive" size={13} color={C.accent}/>
+          <Text style={{color:C.accent,fontSize:12}}>{showArchived?'Proyek aktif':'Lihat arsip'}</Text>
+        </Pressable>
+      </View>
     </View>
     <ScrollView style={{flex:1}} contentContainerStyle={{paddingTop:28,paddingHorizontal:22,paddingBottom:110}}>
       {visible.length === 0 && <View style={{alignItems:'center',marginTop:65,gap:13}}>
         <Feather name="folder" size={42} color={C.accent}/>
         <Text style={{fontSize:21,fontWeight:'700',color:C.text}}>
-          {search ? 'Proyek tidak ditemukan' : 'Belum ada proyek'}
+          {search ? 'Proyek tidak ditemukan' : showArchived ? 'Arsip kosong' : 'Belum ada proyek'}
         </Text>
         <Text style={{fontSize:14,color:C.muted,textAlign:'center',lineHeight:21}}>
           {search ? 'Coba kata pencarian lain.' : 'Buat proyek untuk mulai menulis kode bersama LUMAVUN.'}

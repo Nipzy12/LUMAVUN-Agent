@@ -5,7 +5,7 @@ type RpcResponse={jsonrpc?:string;id?:number;result?:any;error?:{message:string}
 const PROTOCOL='2025-06-18';
 export function mcpFunctionName(connectorId:string,toolName:string):string {
   const encoded=encodeURIComponent(toolName).replace(/%/g,'_');
-  return 'mcp_'+connectorId.replace(/[^a-zA-Z0-9]/g,'_')+'_'+encoded.slice(0,60);
+  return ('mcp_'+connectorId.replace(/[^a-zA-Z0-9]/g,'_')+'_'+encoded).slice(0,64);
 }
 export type MCPTool = {name:string;description?:string;inputSchema?:{type?:string;properties?:Record<string,unknown>;required?:string[]} };
 const sessions=new Map<string,string>();

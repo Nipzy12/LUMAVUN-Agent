@@ -523,6 +523,7 @@ function Main() {
           setMainPage(selected.mode==='code'?'code':'chat');
         }}
       /> : selectedArtifact ? <ArtifactDetail
+        previewEnabled={state.extra.capabilities.visualizations}
         artifact={selectedArtifact}
         onClose={() => setSelectedArtifactId(null)}
         onDelete={removeArtifact}

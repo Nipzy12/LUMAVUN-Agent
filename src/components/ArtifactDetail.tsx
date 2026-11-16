@@ -11,11 +11,12 @@ type Props = {
   artifact: UserArtifact;
   onClose(): void;
   onDelete(id: string): void;
+  previewEnabled?: boolean;
   onSource(projectId: string): void;
 };
 
-export function ArtifactDetail({artifact,onClose,onDelete,onSource}:Props){
-  const [tab,setTab]=useState<'preview'|'code'>(artifact.format==='html'?'preview':'code');
+export function ArtifactDetail({artifact,onClose,onDelete,onSource,previewEnabled=true}:Props){
+  const [tab,setTab]=useState<'preview'|'code'>(artifact.format==='html'&&previewEnabled?'preview':'code');
   function confirmDelete() {
     Alert.alert('Hapus artefak?', 'Snapshot ini akan dihapus dari galeri. File asli di proyek tetap ada.', [
       {text:'Batal',style:'cancel'},
@@ -39,13 +40,13 @@ export function ArtifactDetail({artifact,onClose,onDelete,onSource}:Props){
       <View style={[style.row,{backgroundColor:C.surface,padding:4,borderRadius:17,alignSelf:'flex-start'}]}>
         {(['preview','code'] as const).map(t=><Pressable key={t} accessibilityRole="tab"
           accessibilityState={{selected:tab===t}}
-          onPress={()=>setTab(t)}
+          onPress={()=>{if(t==='preview'&&!previewEnabled){Alert.alert('Visualisasi nonaktif','Aktifkan Visualisasi dalam Kemampuan.');return;}setTab(t)}}
           style={{paddingVertical:10,paddingHorizontal:20,borderRadius:13,backgroundColor:tab===t?C.raised:'transparent'}}>
           <Text style={{color:C.text,fontWeight:tab===t?'700':'400'}}>{t==='preview'?'Preview':'Kode'}</Text>
         </Pressable>)}
       </View>
     </View>
-    {tab==='preview'&&artifact.format==='html'?<View style={{flex:1,marginHorizontal:12,marginBottom:13,
+    {tab==='preview'&&previewEnabled&&artifact.format==='html'?<View style={{flex:1,marginHorizontal:12,marginBottom:13,
       backgroundColor:'white',borderRadius:14,overflow:'hidden'}}>
       <WebView
         originWhitelist={['about:blank','data:*']}
