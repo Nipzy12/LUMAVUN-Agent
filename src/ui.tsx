@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 export const C = {
@@ -72,9 +72,10 @@ export function PrimaryButton({ title, onPress, disabled = false, kind = 'primar
 }
 
 export function Logo({ size = 36 }: { size?: number }) {
-  return <View style={{ width: size, height: size, borderRadius: size / 3, backgroundColor: C.raised,
-    alignItems: 'center', justifyContent: 'center', borderColor: '#494064', borderWidth: 1 }}>
-    <Text style={{ color: C.gold, fontSize: size * .65, lineHeight: size * .78 }}>☾</Text>
-    <Text style={{ color: C.accent, position: 'absolute', right: 4, top: 2, fontSize: size * .22 }}>✦</Text>
-  </View>;
+  return <Image
+    source={require('../assets/icon.png')}
+    accessibilityLabel="LUMAVUN: bulan sabit, satu bintang dan kabut"
+    resizeMode="contain"
+    style={{ width: size, height: size, borderRadius: size / 4 }}
+  />;
 }

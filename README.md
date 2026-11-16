@@ -76,3 +76,12 @@ These belong to a follow-on roadmap, not fake buttons. Feature detail is in docs
 - Tool names are fixed by an allowlist, with limits on rounds, files and file size.
 - Model text is not a source of native permissions.
 - This is an experimental personal development app, not a security-audited production release.
+
+## LUMAVUN v0.2 • UI & Android Icon
+
+- Halaman chat minimalis dengan pemilih model dan tab bawah Chat, Proyek, Code, Artefak.
+- Sidebar riwayat chat, pencarian, dan avatar profil di bagian bawah.
+- Ketuk avatar untuk membuka Profil. Pengaturan menyediakan nama tampilan, ukuran teks, haptik, opsi sembunyikan bilah tab, akses provider, privasi, dan penghapusan riwayat.
+- Menu Artefak dan mikrofon tidak berpura-pura berfungsi: UI menjelaskan batas fitur.
+- Logo orisinal SVG ada di `assets/lumavun-icon.svg`. Saat `npm install`, Sharp membuat `assets/icon.png` serta `assets/adaptive-icon.png` berukuran 1024 piksel. Kedua gambar dikonfigurasi di `app.json`.
+- App versi 0.2.0, Android versionCode 2; APK standalone berisi JS bundle dan tidak memerlukan Metro.

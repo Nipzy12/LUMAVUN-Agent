@@ -7,6 +7,8 @@ on:
       - 'App.tsx'
       - 'src/**'
       - 'app.json'
+      - 'assets/lumavun-icon.svg'
+      - 'scripts/generate-assets.mjs'
       - 'package.json'
       - 'tsconfig.json'
       - '.github/workflows/android-apk.yml'
