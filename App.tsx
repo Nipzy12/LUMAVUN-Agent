@@ -6,6 +6,14 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
+import * as SecureStore from 'expo-secure-store';
+import { HubScreen, type HubPage } from './src/components/HubScreen';
+import { ProjectDetailScreen } from './src/components/ProjectDetailScreen';
+import { completeLocal, installedModelIds, GGUF_CATALOG } from './src/localAI';
+import { activeSkillContext } from './src/githubSkills';
+import { addUsage } from './src/featureState';
+import { listMcpTools, asAgentTool, callMcpTool } from './src/mcpClient';
+import type { APITool } from './src/provider';
 import { ChatView } from './src/components/ChatView';
 import { ProjectsScreen } from './src/components/ProjectsScreen';
 import { CodeWorkScreen } from './src/components/CodeWorkScreen';
@@ -22,7 +30,7 @@ import { CHAT_SYSTEM } from './src/prompts';
 import { INITIAL_STATE, loadSecret, loadState, saveSecret, saveState, type LocalState } from './src/store';
 import type { Approval, Conversation, Entry, ModelInfo, Project, Settings, UserArtifact } from './src/types';
 import { ActionIcon, C, Logo, PrimaryButton, style } from './src/ui';
-import { createWorkspaceTools, createProjectFolder, readProjectFile } from './src/workspace';
+import { createWorkspaceTools, createProjectFolder, deleteProjectFolder, readProjectFile } from './src/workspace';
 
 function newEntry(role: Entry['role'], text: string): Entry {
   return { id: id('msg'), role, text, createdAt: Date.now() };
@@ -46,6 +54,8 @@ function Main() {
   const [mainPage, setMainPage] = useState<'chat' | 'projects' | 'code' | 'artifacts'>('chat');
   const [codeViewMode, setCodeViewMode] = useState<'chat' | 'work'>('work');
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [projectDetailId, setProjectDetailId] = useState<string | null>(null);
+  const [hubPage, setHubPage] = useState<HubPage | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -84,6 +94,8 @@ function Main() {
   const mode = current?.mode || modeDraft;
   const activeProject = state.projects.find(p => p.id === state.selectedProjectId);
   const selectedArtifact = state.artifacts.find(a => a.id === selectedArtifactId);
+  const detailProject = state.projects.find(p => p.id === projectDetailId);
+  const localSelected = !!state.extra.localModelId;
 
   function addEntry(chatId: string, role: Entry['role'], text: string) {
     setState(previous => ({
@@ -108,6 +120,8 @@ function Main() {
     if (busy) { setNotice('Hentikan agent yang sedang bekerja sebelum berpindah halaman.'); return; }
     setSidebarOpen(false);
     setSelectedArtifactId(null);
+    setProjectDetailId(null);
+    setHubPage(null);
     setAccountPage(null);
     setMainPage(page);
     if (page === 'chat' || page === 'code') {
@@ -131,13 +145,14 @@ function Main() {
       const project: Project = { id: id('project'), name, createdAt: now, updatedAt: now };
       createProjectFolder(project.id);
       handleProject(project);
-      setWorkspaceOpen(true);
+      setProjectDetailId(project.id);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Gagal membuat proyek.');
     }
   }
 
   function saveFileArtifact(projectId: string, filePath: string, content: string) {
+    if (!state.extra.capabilities.artifacts) return;
     setState(previous => {
       const projects = previous.projects.map(p => p.id === projectId ? { ...p, updatedAt: Date.now() } : p);
       if (content.length > MAX_ARTIFACT_TEXT) return { ...previous, projects };
@@ -156,6 +171,7 @@ function Main() {
   }
 
   function saveChatArtifact(entry: Entry) {
+    if(!state.extra.capabilities.artifacts){setNotice('Aktifkan Artefak di Kemampuan.');return;}
     const code = fencedCode(entry.text);
     if (!code) { setNotice('Tidak ditemukan blok kode yang bisa disimpan.'); return; }
     try {
@@ -226,10 +242,28 @@ function Main() {
   async function sendMessage() {
     const content = draft.trim();
     if (!content || busy) return;
-    if (!state.settings.model || !key) {
+    if(state.extra.capabilities.chatMemory && /^ingat\s*:/i.test(content)) {
+      const memoryText=content.replace(/^ingat\s*:/i,'').trim();
+      if(memoryText) {
+        setState(previous=>({...previous,extra:{...previous.extra,
+          memoryNotes:[...previous.extra.memoryNotes,{
+            id:id('memory'),text:memoryText.slice(0,2000),createdAt:Date.now()
+          }]}}));
+        setDraft('');
+        setNotice('Memori tersimpan lokal. Dapat dihapus di Kemampuan → File memori.');
+      }
+      return;
+    }
+    if (!localSelected && (!state.settings.model || !key)) {
       setNotice('Set your API key and choose a model first.');
       setSettingsOpen(true);
       return;
+    }
+    if (mainPage === 'code' && codeViewMode === 'work' && !state.extra.capabilities.codeTools) {
+      setNotice('Aktifkan tool Code Agent pada Kemampuan.');return;
+    }
+    if (mainPage === 'code' && codeViewMode === 'work' && localSelected) {
+      setNotice('Mode Work memerlukan model provider yang mendukung tool calling. Model GGUF lokal saat ini tersedia untuk Chat.');return;
     }
     if (mainPage === 'code' && codeViewMode === 'work' && !state.selectedProjectId) {
       setNotice('Create or choose a Code Workspace first.');
@@ -266,14 +300,56 @@ function Main() {
       .slice(-20)
       .map(e => ({ role: e.role as 'user' | 'assistant', content: e.text }));
 
+
     try {
+      const project=state.projects.find(p=>p.id===target.projectId||p.id===state.selectedProjectId);
+      const skillNotes=activeSkillContext(state.extra.skills);
+      const memory=state.extra.capabilities.chatMemory?
+        state.extra.memoryNotes.slice(-12).map(n=>'- '+n.text.slice(0,600)).join('\n'):'';
+      const contextText=skillNotes+
+        (memory?'\nLocal user-approved memory notes:\n'+memory:'')+
+        (project?.customInstructions?'\nProject instructions:\n'+project.customInstructions.slice(0,7000):'')+
+        (project?.memory?'\nProject notes:\n'+project.memory.slice(0,5000):'');
       if (mainPage === 'code' && codeViewMode === 'work') {
         const projectId = state.selectedProjectId;
-        await runCodeAgent(messages, {
+        const externalMap=new Map<string,{connector:typeof state.extra.connectors[number];tool:string;token:string}>();
+        const externalTools:APITool[]=[];
+        for(const connector of state.extra.connectors.filter(x=>x.enabled)) {
+          try {
+            const token=await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
+            const tools=await listMcpTools(connector,token);
+            for(const tool of tools.slice(0,25)) {
+              const definition=asAgentTool(connector,tool);
+              if(externalMap.has(definition.function.name))continue;
+              externalTools.push(definition);
+              externalMap.set(definition.function.name,{connector,tool:tool.name,token});
+            }
+          }catch(e){
+            addEntry(chatId,'tool',connector.name+': MCP tidak tersambung: '+
+              String(e instanceof Error?e.message:e).slice(0,140));
+          }
+        }
+        const agentHistory:APIMessage[]=contextText?
+          [{role:'system',content:contextText},...messages]:messages;
+        await runCodeAgent(agentHistory, {
           workspace: createWorkspaceTools(projectId),
           signal: controller.signal,
-          complete: (history, tools, signal) =>
-            createCompletion(state.settings, key, history, { tools, signal }),
+          externalTools,
+          externalExecutor: async (name,args) => {
+            const target=externalMap.get(name);
+            if(!target)throw new Error('MCP tool tidak terdaftar');
+            return callMcpTool(target.connector,target.token,target.tool,args);
+          },
+          approveReads: state.extra.capabilities.toolAccess==='ask',
+          complete: async (history, tools, signal) => {
+            const result=await createCompletion(state.settings, key, history, { tools, signal });
+            setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
+              at:Date.now(),kind:'agent',model:result.model,
+              promptTokens:result.usage?.prompt_tokens??null,
+              completionTokens:result.usage?.completion_tokens??null
+            })}}));
+            return result;
+          },
           event: event => addEntry(chatId, event.type === 'tool' ? 'tool' : 'assistant', event.text),
           onMutation: async ({ tool, path }) => {
             if (tool === 'delete_file') {
@@ -292,10 +368,40 @@ function Main() {
             setApproval(action);
           })
         });
+      } else if(localSelected) {
+        const modelId=state.extra.localModelId;
+        const result=await completeLocal(modelId,[
+          {role:'system',content:CHAT_SYSTEM+contextText},
+          ...messages.map(m=>({role:m.role as 'user'|'assistant',content:String(m.content||'')}))
+        ],controller.signal);
+        addEntry(chatId,'assistant',result);
+        setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
+          at:Date.now(),kind:'local',model:modelId,promptTokens:null,completionTokens:null
+        })}}));
       } else {
-        const result = await createCompletion(state.settings, key,
-          [{ role: 'system', content: CHAT_SYSTEM }, ...messages], { signal: controller.signal });
+        let result;
+        try{
+          result=await createCompletion(state.settings,key,
+            [{role:'system',content:CHAT_SYSTEM+contextText},...messages],{signal:controller.signal});
+        } catch(error) {
+          if(!state.extra.capabilities.modelFallback || !installedModelIds().length)throw error;
+          const local=installedModelIds()[0];
+          const fallbackText=await completeLocal(local,[
+            {role:'system',content:CHAT_SYSTEM+contextText},
+            ...messages.map(m=>({role:m.role as 'user'|'assistant',content:String(m.content||'')}))
+          ],controller.signal);
+          addEntry(chatId,'assistant','[Model lokal cadangan]\n'+fallbackText);
+          setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
+            at:Date.now(),kind:'local',model:local,promptTokens:null,completionTokens:null
+          })}}));
+          return;
+        }
         addEntry(chatId, 'assistant', result.content);
+        setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
+          at:Date.now(),kind:'chat',model:result.model,
+          promptTokens:result.usage?.prompt_tokens??null,
+          completionTokens:result.usage?.completion_tokens??null
+        })}}));
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Unknown provider error';
@@ -337,9 +443,16 @@ function Main() {
     }).catch(() => setNotice('Gagal menghapus kunci API.'));
   }
 
+  function openHub(page:HubPage){
+    if(busy){setNotice('Hentikan proses aktif dahulu.');return;}
+    setAccountPage(null);
+    setSidebarOpen(false);
+    setHubPage(page);
+  }
   function openAccount(screen: 'settings' | 'profile', fromSettings = false) {
     if (busy) { setNotice('Hentikan respons aktif sebelum membuka pengaturan.'); return; }
     setSidebarOpen(false);
+    setHubPage(null);
     setProfileFromSettings(fromSettings);
     setAccountPage(screen);
   }
@@ -365,8 +478,51 @@ function Main() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
 
 
-      {!accountPage ? <>
-      {selectedArtifact ? <ArtifactDetail
+      {hubPage ? <HubScreen
+        page={hubPage}
+        extra={state.extra}
+        cloudModels={models}
+        selectedCloud={state.settings.model}
+        onPage={setHubPage}
+        onBack={()=>{setHubPage(null);setAccountPage('settings')}}
+        onChange={extra=>setState(prev=>({...prev,extra}))}
+        onPickCloud={model=>{handlePickModel(model);setState(prev=>({...prev,extra:{...prev.extra,localModelId:''}}));}}
+        onProvider={()=>setSettingsOpen(true)}
+      /> : !accountPage ? <>
+      {detailProject ? <ProjectDetailScreen
+        project={detailProject}
+        chats={state.chats}
+        onBack={()=>setProjectDetailId(null)}
+        onSave={next=>setState(prev=>({...prev,projects:prev.projects.map(p=>p.id===next.id?next:p)}))}
+        onDelete={()=>{
+          try{
+            deleteProjectFolder(detailProject.id);
+            setState(prev=>({...prev,
+              projects:prev.projects.filter(p=>p.id!==detailProject.id),
+              selectedProjectId:prev.selectedProjectId===detailProject.id?'':prev.selectedProjectId,
+              artifacts:prev.artifacts.filter(a=>a.projectId!==detailProject.id),
+              chats:prev.chats.map(c=>c.projectId===detailProject.id?{...c,projectId:undefined}:c)
+            }));
+            setProjectDetailId(null);
+          }catch(error){setNotice('Gagal menghapus proyek: '+String(error))}
+        }}
+        onOpenFiles={()=>setWorkspaceOpen(true)}
+        onNewChat={()=>{
+          const chat=newConversation('chat',state.settings.model);
+          chat.projectId=detailProject.id;
+          setState(prev=>({...prev,chats:[chat,...prev.chats],selectedChatId:chat.id,
+            selectedProjectId:detailProject.id}));
+          setProjectDetailId(null);
+          setMainPage('chat');
+        }}
+        onOpenChat={chatId=>{
+          const selected=state.chats.find(c=>c.id===chatId);
+          if(!selected)return;
+          setState(prev=>({...prev,selectedChatId:chatId,selectedProjectId:detailProject.id}));
+          setProjectDetailId(null);
+          setMainPage(selected.mode==='code'?'code':'chat');
+        }}
+      /> : selectedArtifact ? <ArtifactDetail
         artifact={selectedArtifact}
         onClose={() => setSelectedArtifactId(null)}
         onDelete={removeArtifact}
@@ -404,7 +560,9 @@ function Main() {
                   style={[style.row,{backgroundColor:C.raised,borderRadius:19,paddingHorizontal:13,paddingVertical:10,gap:6,maxWidth:218}]}>
                   <Feather name="cpu" size={14} color={C.accent}/>
                   <Text style={{color:C.text,fontSize:12,fontWeight:'600',flexShrink:1}} numberOfLines={1}>
-                    {state.settings.model?state.settings.model.split('/').pop():'Pilih model'}
+                    {state.extra.localModelId?
+                      GGUF_CATALOG.find(m=>m.id===state.extra.localModelId)?.name||'AI lokal':
+                      state.settings.model?state.settings.model.split('/').pop():'Pilih model'}
                   </Text>
                   <Feather name="chevron-down" size={12} color={C.muted}/>
                 </Pressable>
@@ -424,7 +582,7 @@ function Main() {
           onMenu={()=>setSidebarOpen(true)}
           onOpen={projectId=>{
             setState(previous=>({...previous,selectedProjectId:projectId}));
-            setWorkspaceOpen(true);
+            setProjectDetailId(projectId);
           }}
           onCreate={handleCreateProject}
         />}
@@ -489,6 +647,7 @@ function Main() {
         onWorkspace={() => setWorkspaceOpen(true)}
         onClearChats={clearAllChats}
         onDisconnectProvider={disconnectProvider}
+        onHub={openHub}
       />}
     </KeyboardAvoidingView>
 
@@ -583,7 +742,10 @@ function Main() {
     <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)}
       settings={state.settings} apiKey={key} onSave={handleSaveSettings} onModels={handleModels} />
     <ModelSheet open={modelsOpen} onClose={() => setModelsOpen(false)}
-      current={state.settings.model} models={models} onPick={handlePickModel} />
+      current={state.settings.model} models={models} onPick={model=>{
+        handlePickModel(model);
+        setState(prev=>({...prev,extra:{...prev.extra,localModelId:''}}));
+      }} />
     <WorkspaceSheet open={workspaceOpen} onClose={() => setWorkspaceOpen(false)}
       projects={state.projects} activeId={state.selectedProjectId}
       onCreate={handleProject} onSelect={projectId => setState(s => ({ ...s, selectedProjectId: projectId }))}
