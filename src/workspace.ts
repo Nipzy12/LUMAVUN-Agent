@@ -24,6 +24,11 @@ function ensureParent(projectId: string, path: string): void {
   dir.create({ idempotent: true, intermediates: true });
 }
 
+export function deleteProjectFolder(projectId: string) {
+  const folder = projectDirectory(projectId);
+  if (folder.exists) folder.delete();
+}
+
 export function createProjectFolder(projectId: string) {
   projectDirectory(projectId).create({ idempotent: true, intermediates: true });
 }

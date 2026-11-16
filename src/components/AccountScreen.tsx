@@ -5,6 +5,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { C, ActionIcon, Logo, PrimaryButton, style } from '../ui';
 import type { UserPreferences } from '../store';
+import type { HubPage } from './HubScreen';
 
 type Screen = 'settings' | 'profile';
 
@@ -22,6 +23,7 @@ type Props = {
   onWorkspace: () => void;
   onClearChats: () => void;
   onDisconnectProvider: () => void;
+  onHub: (page: HubPage) => void;
 };
 
 type Glyph = keyof typeof Feather.glyphMap;
@@ -62,7 +64,7 @@ function SectionTitle({ text }: { text: string }) {
 export function AccountScreen({
   screen, profile, chatsCount, projectsCount, hasProviderKey, onBack,
   onNavigate, onUpdate, onProvider, onModels, onWorkspace,
-  onClearChats, onDisconnectProvider
+  onClearChats, onDisconnectProvider, onHub
 }: Props) {
   const [nameEdit, setNameEdit] = useState(false);
   const [name, setName] = useState(profile.name);
@@ -155,9 +157,12 @@ export function AccountScreen({
         </Group>
         <SectionTitle text="KEMAMPUAN & KONTROL" />
         <Group>
-          <Row icon="sliders" title="Kemampuan" subtitle="Chat & Code Agent tersedia" onPress={() => Alert.alert('Kemampuan LUMAVUN', 'Chat dan Code Agent aktif. Operasi tulis dan hapus file selalu membutuhkan persetujuan.')}/>
-          <Row icon="grid" title="Konektor" subtitle="Integrasi pihak ketiga belum tersedia" onPress={() => unavailable('Konektor')}/>
-          <Row icon="shield" title="Izin agent" subtitle="Setiap perubahan file meminta persetujuan" onPress={() => Alert.alert('Izin Code Agent', 'Agent hanya dapat mengakses direktori proyek LUMAVUN. Tidak ada akses terminal atau file pribadi di luar sandbox.')} last/>
+          <Row icon="sliders" title="Kemampuan" subtitle="Pilihan tools, memori, dan perilaku agent" onPress={() => onHub('capabilities')}/>
+          <Row icon="grid" title="Konektor" subtitle="MCP server dan konektor khusus" onPress={() => onHub('connectors')}/>
+          <Row icon="shield" title="Izin" subtitle="Lokasi dan Kalender Android" onPress={() => onHub('permissions')}/>
+          <Row icon="activity" title="Penggunaan dan batasan" subtitle="Statistik pemakaian dari perangkat" onPress={() => onHub('usage')}/>
+          <Row icon="github" title="Skill" subtitle="Pasang instruksi dari GitHub" onPress={() => onHub('skills')}/>
+          <Row icon="cpu" title="AI lokal & model" subtitle="GGUF dan seluruh model provider terdeteksi" onPress={() => onHub('models')} last/>
         </Group>
         <SectionTitle text="TAMPILAN" />
         <Group>

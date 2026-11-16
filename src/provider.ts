@@ -19,7 +19,7 @@ export type APITool = {
     parameters: { type: string; properties: Record<string, unknown>; required?: string[]; additionalProperties?: boolean };
   };
 };
-export type Completion = { content: string; toolCalls: ToolCall[]; model: string };
+export type Completion = { content: string; toolCalls: ToolCall[]; model: string; usage?: { prompt_tokens?:number; completion_tokens?:number } };
 
 export const PRESETS: Record<'openai' | 'openrouter', string> = {
   openai: 'https://api.openai.com/v1',
@@ -84,6 +84,7 @@ export async function createCompletion(
   const raw = await api<{
     model?: string;
     choices?: Array<{ message?: { content?: string | null; tool_calls?: ToolCall[] } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   }>(settings, key, 'chat/completions', {
     signal: options.signal,
     body: {
@@ -101,6 +102,7 @@ export async function createCompletion(
   return {
     content: message.content || '',
     toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
-    model: raw.model || settings.model
+    model: raw.model || settings.model,
+    usage: raw.usage
   };
 }

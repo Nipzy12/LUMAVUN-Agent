@@ -3,13 +3,13 @@
     "name": "LUMAVUN",
     "slug": "lumavun-agent",
     "scheme": "lumavun",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
       "package": "com.lumavun.agent",
-      "versionCode": 3,
+      "versionCode": 4,
       "edgeToEdgeEnabled": true,
       "permissions": [],
       "adaptiveIcon": {
@@ -19,7 +19,22 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "llama.rn",
+        {
+          "enableOpenCL": false,
+          "forceCxx20": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "LUMAVUN meminta akses lokasi hanya ketika kamu mengaktifkannya."
+        }
+      ],
+      "expo-calendar",
+      "expo-build-properties"
     ],
     "extra": {
       "brand": "LUMAVUN"

@@ -1,6 +1,7 @@
 import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
 import type { Conversation, Project, Settings, UserArtifact } from './types';
+import { DEFAULT_EXTRA, withExtra, type ExtraState } from './featureState';
 
 const KEY = 'lumavun.local.v1';
 const SECRET = 'lumavun.provider.secret';
@@ -21,6 +22,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 
 export type LocalState = {
   profile: UserPreferences;
+  extra: ExtraState;
   settings: Settings;
   projects: Project[];
   artifacts: UserArtifact[];
@@ -31,6 +33,7 @@ export type LocalState = {
 
 export const INITIAL_STATE: LocalState = {
   profile: DEFAULT_PREFERENCES,
+  extra: DEFAULT_EXTRA,
   settings: {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
@@ -54,6 +57,7 @@ export async function loadState(): Promise<LocalState> {
       ...obj,
       settings: { ...INITIAL_STATE.settings, ...(obj.settings || {}) },
       profile: { ...DEFAULT_PREFERENCES, ...(obj.profile || {}) },
+      extra: withExtra(obj.extra || {}),
       projects: Array.isArray(obj.projects) ? obj.projects : [],
       artifacts: Array.isArray(obj.artifacts) ? obj.artifacts : [],
       chats: Array.isArray(obj.chats) ? obj.chats : []

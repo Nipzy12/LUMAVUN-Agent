@@ -15,6 +15,7 @@ export type Conversation = {
   model: string;
   createdAt: number;
   updatedAt: number;
+  projectId?: string;
   entries: Entry[];
 };
 
@@ -32,6 +33,11 @@ export type Project = {
   name: string;
   createdAt: number;
   updatedAt?: number;
+  description?: string;
+  customInstructions?: string;
+  memory?: string;
+  pinned?: boolean;
+  archived?: boolean;
 };
 
 export type UserArtifact = {

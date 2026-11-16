@@ -1,6 +1,6 @@
 {
   "name": "lumavun-agent",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -25,7 +25,11 @@
     "expo-sharing": "*",
     "react-native-safe-area-context": "*",
     "@expo/vector-icons": "*",
-    "react-native-webview": "14.0.1"
+    "react-native-webview": "14.0.1",
+    "llama.rn": "0.12.9",
+    "expo-location": "*",
+    "expo-calendar": "*",
+    "expo-build-properties": "*"
   },
   "devDependencies": {
     "typescript": "~6.0.3",

@@ -20,9 +20,9 @@ export function ProjectsScreen({ projects, selectedProjectId, onMenu, onOpen, on
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const visible = useMemo(() => projects
-    .filter(p => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter(p => !p.archived && p.name.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((a,b) => sortByName ? a.name.localeCompare(b.name)
-      : (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)), [projects,search,sortByName]);
+      : (Number(b.pinned)-Number(a.pinned)) || (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)), [projects,search,sortByName]);
 
   function create() {
     const cleaned = name.trim().replace(/\s+/g, ' ');
@@ -65,7 +65,7 @@ export function ProjectsScreen({ projects, selectedProjectId, onMenu, onOpen, on
         accessibilityRole="button"
         onPress={()=>onOpen(project.id)}
         style={{paddingVertical:12,marginBottom:20}}>
-        <Text style={{fontSize:22,color:selectedProjectId===project.id?C.accent:C.text,fontWeight:'500'}} numberOfLines={2}>{project.name}</Text>
+        <Text style={{fontSize:22,color:selectedProjectId===project.id?C.accent:C.text,fontWeight:'500'}} numberOfLines={2}>{project.pinned?'✦ ':''}{project.name}</Text>
         <Text style={{fontSize:15,color:C.muted,marginTop:6}}>Diedit {shortDate(project.updatedAt || project.createdAt)}</Text>
       </Pressable>)}
     </ScrollView>
