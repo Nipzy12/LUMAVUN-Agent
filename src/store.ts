@@ -5,7 +5,22 @@ import type { Conversation, Project, Settings } from './types';
 const KEY = 'lumavun.local.v1';
 const SECRET = 'lumavun.provider.secret';
 
+export type UserPreferences = {
+  name: string;
+  haptics: boolean;
+  hideTabs: boolean;
+  largeText: boolean;
+};
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  name: 'Pengguna',
+  haptics: true,
+  hideTabs: false,
+  largeText: false
+};
+
 export type LocalState = {
+  profile: UserPreferences;
   settings: Settings;
   projects: Project[];
   selectedProjectId: string;
@@ -14,6 +29,7 @@ export type LocalState = {
 };
 
 export const INITIAL_STATE: LocalState = {
+  profile: DEFAULT_PREFERENCES,
   settings: {
     provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
@@ -35,6 +51,7 @@ export async function loadState(): Promise<LocalState> {
       ...INITIAL_STATE,
       ...obj,
       settings: { ...INITIAL_STATE.settings, ...(obj.settings || {}) },
+      profile: { ...DEFAULT_PREFERENCES, ...(obj.profile || {}) },
       projects: Array.isArray(obj.projects) ? obj.projects : [],
       chats: Array.isArray(obj.chats) ? obj.chats : []
     };
