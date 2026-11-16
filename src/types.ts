@@ -31,6 +31,18 @@ export type Project = {
   id: string;
   name: string;
   createdAt: number;
+  updatedAt?: number;
+};
+
+export type UserArtifact = {
+  id: string;
+  title: string;
+  content: string;
+  path: string;
+  projectId: string | null;
+  format: 'html' | 'svg' | 'markdown' | 'code';
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type AgentAction = 'list_files' | 'read_file' | 'write_file' | 'replace_in_file' | 'delete_file';

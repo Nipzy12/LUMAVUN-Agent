@@ -1,6 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
-import type { Conversation, Project, Settings } from './types';
+import type { Conversation, Project, Settings, UserArtifact } from './types';
 
 const KEY = 'lumavun.local.v1';
 const SECRET = 'lumavun.provider.secret';
@@ -23,6 +23,7 @@ export type LocalState = {
   profile: UserPreferences;
   settings: Settings;
   projects: Project[];
+  artifacts: UserArtifact[];
   selectedProjectId: string;
   chats: Conversation[];
   selectedChatId: string | null;
@@ -37,6 +38,7 @@ export const INITIAL_STATE: LocalState = {
     temperature: 0.3
   },
   projects: [],
+  artifacts: [],
   selectedProjectId: '',
   chats: [],
   selectedChatId: null
@@ -53,6 +55,7 @@ export async function loadState(): Promise<LocalState> {
       settings: { ...INITIAL_STATE.settings, ...(obj.settings || {}) },
       profile: { ...DEFAULT_PREFERENCES, ...(obj.profile || {}) },
       projects: Array.isArray(obj.projects) ? obj.projects : [],
+      artifacts: Array.isArray(obj.artifacts) ? obj.artifacts : [],
       chats: Array.isArray(obj.chats) ? obj.chats : []
     };
   } catch {

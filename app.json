@@ -3,13 +3,13 @@
     "name": "LUMAVUN",
     "slug": "lumavun-agent",
     "scheme": "lumavun",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "android": {
       "package": "com.lumavun.agent",
-      "versionCode": 2,
+      "versionCode": 3,
       "edgeToEdgeEnabled": true,
       "permissions": [],
       "adaptiveIcon": {

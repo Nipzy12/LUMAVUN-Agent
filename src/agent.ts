@@ -22,6 +22,7 @@ export type AgentDependencies = {
   complete(messages: APIMessage[], tools: APITool[], signal?: AbortSignal): Promise<Completion>;
   workspace: WorkspaceTools;
   approve(action: Approval): Promise<boolean>;
+  onMutation?(change: { tool: AgentAction; path: string }): void | Promise<void>;
   event(entry: { type: 'assistant' | 'tool'; text: string }): void;
   signal?: AbortSignal;
 };
@@ -98,6 +99,12 @@ export async function runCodeAgent(history: APIMessage[], deps: AgentDependencie
             result = 'DENIED BY USER. No changes made.';
           } else {
             result = await executeTool(name, args, deps.workspace);
+            // Successful mutations are surfaced to the artifact gallery.
+            try {
+              await deps.onMutation?.({ tool: name, path: safePath(textArg(args, 'path')) });
+            } catch {
+              deps.event({ type: 'tool', text: 'Artefak gagal diperbarui; perubahan file tetap tersimpan.' });
+            }
           }
         } else {
           result = await executeTool(name, args, deps.workspace);

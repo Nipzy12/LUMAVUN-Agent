@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import type { Entry } from '../types';
+import { fencedCode } from '../artifacts';
 import { C, Logo, style } from '../ui';
 
 function TextWithCode({ value, largeText = false }: { value: string; largeText?: boolean }) {
@@ -27,9 +28,9 @@ function TextWithCode({ value, largeText = false }: { value: string; largeText?:
   </View>;
 }
 
-export function ChatView({ entries, mode, onSuggestion, busy, name, largeText }: {
+export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, onSaveCode }: {
   entries: Entry[]; mode: 'chat' | 'code'; busy: boolean; onSuggestion: (text: string) => void;
-  name?: string; largeText?: boolean;
+  name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void;
 }) {
   return <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 28, paddingBottom: 28, flexGrow: 1 }}
     keyboardShouldPersistTaps="handled">
@@ -83,6 +84,12 @@ export function ChatView({ entries, mode, onSuggestion, busy, name, largeText }:
           {!user && <Logo size={29} />}
           <View style={[user && { backgroundColor: C.raised, borderRadius: 19, padding: 13 }, { flexShrink: 1 }]}>
             <TextWithCode value={entry.text} largeText={largeText} />
+            {!user && fencedCode(entry.text) && onSaveCode && <Pressable
+              onPress={() => onSaveCode(entry)}
+              style={[style.row, { gap: 7, paddingVertical: 10, marginTop: 5 }]}>
+              <Feather name="save" color={C.accent} size={14} />
+              <Text style={{ color: C.accent, fontSize: 12 }}>Simpan kode sebagai artefak</Text>
+            </Pressable>}
           </View>
         </View>;
       })}

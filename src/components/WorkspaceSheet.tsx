@@ -9,10 +9,11 @@ import {
   readProjectFile, shareProjectFile, writeProjectFile
 } from '../workspace';
 
-export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, onSelect }: {
+export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, onSelect, onFileSaved }: {
   open: boolean; onClose: () => void; projects: Project[]; activeId: string;
   onCreate: (project: Project) => void;
   onSelect: (id: string) => void;
+  onFileSaved?: (projectId: string, path: string, content: string) => void;
 }) {
   const [newName, setNewName] = useState('');
   const [pathDraft, setPathDraft] = useState('');
@@ -33,7 +34,7 @@ export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, on
     try {
       const name = newName.trim();
       if (!name || name.length > 45) throw new Error('Enter a project name (1–45 characters)');
-      const project = { id: id('project'), name, createdAt: Date.now() };
+      const project = { id: id('project'), name, createdAt: Date.now(), updatedAt: Date.now() };
       createProjectFolder(project.id);
       onCreate(project);
       setNewName('');
@@ -56,6 +57,7 @@ export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, on
     setWorking(true);
     try {
       await writeProjectFile(activeId, filePath, content);
+      onFileSaved?.(activeId, filePath, content);
       refresh(); setStatus('Saved: ' + filePath);
     } catch (error) { setStatus(error instanceof Error ? error.message : 'Save failed'); }
     finally { setWorking(false); }
@@ -66,7 +68,12 @@ export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, on
     try {
       const path = await importTextFile(activeId);
       refresh();
-      if (path) { setStatus('Imported ' + path); await openFile(path); }
+      if (path) {
+        const imported = await readProjectFile(activeId, path);
+        onFileSaved?.(activeId, path, imported);
+        setStatus('Imported ' + path);
+        await openFile(path);
+      }
     } catch (error) { setStatus(error instanceof Error ? error.message : 'Import failed'); }
     finally { setWorking(false); }
   }
@@ -125,7 +132,7 @@ export function WorkspaceSheet({ open, onClose, projects, activeId, onCreate, on
         <Text style={style.label}>EDITOR: {filePath}</Text>
         <TextInput style={[style.input, { minHeight: 230, textAlignVertical: 'top', fontFamily: 'monospace' }]}
           value={content} onChangeText={setContent} multiline autoCapitalize="none" autoCorrect={false} />
-        <PrimaryButton title="Save file" onPress={() => { void saveFile(); }} disabled={working} />
+        <PrimaryButton title="Simpan file & perbarui artefak" onPress={() => { void saveFile(); }} disabled={working} />
         {files.includes(filePath) && <PrimaryButton title="Export / Share file" kind="outline" onPress={() => { void share(); }} />}
       </>}
     </>}
