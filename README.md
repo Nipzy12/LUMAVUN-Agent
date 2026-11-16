@@ -97,10 +97,46 @@ These belong to a follow-on roadmap, not fake buttons. Feature detail is in docs
 
 ### Getting an Android APK
 
-The standalone workflow builds the **release** JavaScript bundle into \`app-release.apk\` and checks signing plus \`assets/index.android.bundle\`. Open the [Android Standalone APK workflow](.github/workflows/android-apk.yml), choose the latest green run for version **0.3.0 (Android versionCode 3)**, and download the \`lumavun-android-standalone\` artifact. Extract the ZIP to install \`app-release.apk\`.
+The standalone workflow builds the **release** JavaScript bundle into \`app-release.apk\` and checks signing plus \`assets/index.android.bundle\`. Open the [Android Standalone APK workflow](.github/workflows/android-apk.yml), choose the latest green run for version **0.4.0 (Android versionCode 4)**, and download the \`lumavun-android-standalone\` artifact. Extract the ZIP to install \`app-release.apk\`.
 
 The artifact is signed with an ephemeral debug key for personal testing. Android may reject in-place upgrades if the key differs across builds. Back up project files and local chat before uninstalling, because uninstalling deletes app-private data. A stable production signing key and backup/restore are not implemented.
 
 ### Privacy and limitations
 
 Data and code snapshots live on-device in SQLite KV and private application file storage. They are not encrypted by this starter app. AI requests send user prompts and any agent-read file contents to the selected provider. API keys are in device SecureStore. No hosted workspace, cloud agent, automated code runner, GitHub PR runner, real Canvas editor, or subscription management is claimed.
+
+
+## LUMAVUN v0.4 | Kemampuan, MCP, Skills dan AI lokal
+
+### Kemampuan
+Buka Profil -> Pengaturan -> Kemampuan.
+
+- Pencarian web: hanya aktif dengan konektor MCP yang menyediakan tool search/web/browse. Setiap panggilan meminta persetujuan. Tanpa server, chat tetap berjalan tanpa hasil pencarian.
+- Artefak: mengontrol snapshot file dan chat. Visualisasi: mengontrol preview HTML.
+- Eksekusi kode/file: mengontrol Code Agent untuk folder aplikasi, bukan shell.
+- Fallback model: hanya pada error jaringan/provider sementara (contohnya HTTP 429, 503). Tidak untuk menghindari penolakan keamanan.
+- Memori: OFF secara default. Aktifkan dan tulis pesan dengan awalan "ingat:" agar tersimpan lokal. Semua memori bisa dibaca/hapus di halaman File memori.
+- Akses alat: mode sesuai permintaan meminta izin baca. Semua perubahan file dan panggilan MCP eksternal tetap meminta izin setiap kali.
+
+### Konektor MCP Server
+Buka Pengaturan -> Konektor -> tombol + -> Tambahkan kustom. Masukkan nama, URL HTTPS Streamable HTTP dan bearer token opsional. HTTP hanya untuk localhost/loopback. Tombol tes menjalankan initialize dan tools/list. Token disimpan di SecureStore.
+
+Tool terhubung tersedia pada Code -> Work dengan persetujuan eksplisit per aksi. Tool pencarian tersedia pada Chat bila Pencarian web aktif dan model cloud mendukung tool calling. Contoh integrasi Gmail, Google Drive, Alpha Vantage dan lainnya tidak otomatis tersambung: tiap layanan memerlukan server MCP dan otorisasi sendiri.
+
+### Skill GitHub
+Buka Pengaturan -> Skill. Pilih dari contoh repo GitHub yang terverifikasi, atau masukkan owner/repository dan path SKILL.md. Konten Markdown diunduh dari main, disimpan lokal, bisa diaktifkan, dilihat, dan dihapus. Kontennya menjadi referensi, bukan skrip yang dieksekusi; seluruh perubahan file tetap memerlukan izin.
+
+### Izin dan penggunaan
+- Izin menampilkan status izin lokasi Android saat digunakan dan akses kalender. Aplikasi tidak meminta background location.
+- Penggunaan menampilkan jumlah panggilan cloud/lokal dalam 7 hari serta jumlah token yang memang dilaporkan provider. Kuota akun, tanggal reset, kredit dan penagihan tidak tersedia melalui API generik sehingga nilainya tidak dipalsukan.
+- Proyek membuka halaman detail dengan file konteks, instruksi khusus, memori, chat proyek dan menu sematkan/edit/arsipkan/hapus. Arsip bisa dibuka dari daftar proyek untuk memulihkan proyek.
+
+### AI lokal Android: llama.cpp (bukan server Ollama)
+APK v0.4 memuat native runtime llama.rn untuk model GGUF. Model diunduh terpisah ke penyimpanan privat HP dan dapat dipilih, dibatalkan saat unduh, serta dihapus.
+
+Model rekomendasi: Qwen2.5 0.5B Q4_K_M sekitar 491 MB, Qwen2.5 1.5B Q4_K_M sekitar 986 MB, dan Llama 3.2 1B Q4_K_M sekitar 808 MB. RAM yang dibutuhkan bisa melebihi ukuran file. Pengujian langsung di HP tetap diperlukan.
+
+Model cloud disinkronkan dari endpoint /models provider yang dipilih. Ukuran bobot cloud biasanya tidak tersedia dan model cloud bukan file yang bisa diunduh ke HP. Chat lokal tersedia setelah model terpasang; Code Agent dengan tool calling tetap memerlukan provider yang mendukung tools.
+
+### Batas versi ini
+Aplikasi tidak meniru layanan langganan/kuota ChatGPT atau Claude, tidak mempunyai server Ollama penuh, tidak menjalankan shell native, dan belum memiliki pengelolaan OAuth Gmail/Drive otomatis, sync antardevice, atau cloud computer.
