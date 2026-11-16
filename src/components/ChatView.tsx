@@ -5,12 +5,12 @@ import * as Clipboard from 'expo-clipboard';
 import type { Entry } from '../types';
 import { C, Logo, style } from '../ui';
 
-function TextWithCode({ value }: { value: string }) {
+function TextWithCode({ value, largeText = false }: { value: string; largeText?: boolean }) {
   const parts = value.split(/(\x60\x60\x60[\s\S]*?\x60\x60\x60)/g);
   return <View style={{ gap: 8 }}>
     {parts.map((part, i) => {
       if (!part.startsWith('\x60\x60\x60')) {
-        return <Text key={i} selectable style={{ color: C.text, fontSize: 15, lineHeight: 23 }}>{part}</Text>;
+        return <Text key={i} selectable style={{ color: C.text, fontSize: largeText ? 18 : 15, lineHeight: largeText ? 28 : 23 }}>{part}</Text>;
       }
       const code = part.replace(/^\x60\x60\x60[^\n]*\n?/, '').replace(/\x60\x60\x60$/, '');
       return <View key={i} style={{ backgroundColor: '#090D18', borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 }}>
@@ -27,29 +27,43 @@ function TextWithCode({ value }: { value: string }) {
   </View>;
 }
 
-export function ChatView({ entries, mode, onSuggestion, busy }: {
+export function ChatView({ entries, mode, onSuggestion, busy, name, largeText }: {
   entries: Entry[]; mode: 'chat' | 'code'; busy: boolean; onSuggestion: (text: string) => void;
+  name?: string; largeText?: boolean;
 }) {
   return <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 28, paddingBottom: 28, flexGrow: 1 }}
     keyboardShouldPersistTaps="handled">
-    {entries.length === 0 ? <View style={{ flex: 1, justifyContent: 'center', gap: 18, paddingBottom: 35 }}>
-      <View style={{ alignItems: 'center', gap: 16, marginTop: 40 }}>
-        <Logo size={62} />
-        <Text style={{ color: C.text, fontSize: 26, textAlign: 'center', fontWeight: '700' }}>
-          {mode === 'code' ? 'Build something with LUMAVUN' : 'What can I help with?'}
-        </Text>
-        <Text style={{ color: C.muted, textAlign: 'center', lineHeight: 20, paddingHorizontal: 16 }}>
-          {mode === 'code' ? 'Plan, read, create and edit files in your phone workspace.' : 'Ask questions, brainstorm ideas, explain code, and more.'}
-        </Text>
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 18 }}>
+    {entries.length === 0 ? <View style={{
+      flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 14, gap: 13
+    }}>
+      <Logo size={90} />
+      <Text style={{
+        color: C.text, fontSize: 28, textAlign: 'center',
+        fontFamily: 'serif', marginTop: 3, fontWeight: '600'
+      }}>
+        {mode === 'code' ? 'Apa yang mau kamu bangun?' : (name && name !== 'Pengguna' ? 'Halo, ' + name + '.' : 'Selamat datang di LUMAVUN')}
+      </Text>
+      <Text style={{ color: C.muted, textAlign: 'center', fontSize: 13, lineHeight: 20, maxWidth: 290 }}>
+        {mode === 'code'
+          ? 'Code Agent siap membaca dan mengubah file proyek dengan persetujuanmu.'
+          : 'Imagine Beyond the Mist. Mulai dari satu pertanyaan.'}
+      </Text>
+      <View style={{
+        flexDirection: 'row', flexWrap: 'wrap', gap: 9,
+        marginTop: 23, justifyContent: 'center', maxWidth: 355
+      }}>
         {(mode === 'code'
-          ? ['Create a React component', 'Review my project files', 'Refactor existing code', 'Generate a README']
-          : ['Explain a complex topic', 'Help me write code', 'Brainstorm an idea', 'Plan a new project']
-        ).map(text => <Pressable key={text} style={{
-          borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 14, width: '48%', backgroundColor: C.surface
-        }} onPress={() => onSuggestion(text)}>
-          <Text style={{ color: C.text, lineHeight: 20, fontSize: 13 }}>{text}</Text>
+          ? ['Buat aplikasi Android', 'Periksa kode proyek', 'Buat komponen React', 'Susun struktur proyek']
+          : ['Bantu buat aplikasi', 'Jelaskan topik sulit', 'Cari ide kreatif', 'Tulis dan perbaiki kode']
+        ).map(text => <Pressable key={text}
+          accessibilityRole="button"
+          style={{
+            borderWidth: 1, borderColor: C.border, borderRadius: 17,
+            paddingHorizontal: 12, paddingVertical: 13, width: '47%',
+            backgroundColor: C.surface, minHeight: 60, justifyContent: 'center'
+          }}
+          onPress={() => onSuggestion(text)}>
+          <Text style={{ color: C.text, fontSize: 12.5, lineHeight: 19, textAlign: 'center' }}>{text}</Text>
         </Pressable>)}
       </View>
     </View> : <View style={{ gap: 19 }}>
@@ -68,11 +82,11 @@ export function ChatView({ entries, mode, onSuggestion, busy }: {
         }}>
           {!user && <Logo size={29} />}
           <View style={[user && { backgroundColor: C.raised, borderRadius: 19, padding: 13 }, { flexShrink: 1 }]}>
-            <TextWithCode value={entry.text} />
+            <TextWithCode value={entry.text} largeText={largeText} />
           </View>
         </View>;
       })}
     </View>}
-    {busy && <Text style={{ color: C.accent, marginTop: 15, fontSize: 13 }}>LUMAVUN is working…</Text>}
+    {busy && <Text style={{ color: C.accent, marginTop: 15, fontSize: 13 }}>LUMAVUN sedang bekerja…</Text>}
   </ScrollView>;
 }
