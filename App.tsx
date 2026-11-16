@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
-  Pressable, ScrollView, StatusBar, Text, TextInput, View
+  Pressable, ScrollView, StatusBar, Text, TextInput, Vibration, View
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
 import { ChatView } from './src/components/ChatView';
+import { AccountScreen } from './src/components/AccountScreen';
 import { ModelSheet } from './src/components/ModelSheet';
 import { SettingsSheet } from './src/components/SettingsSheet';
 import { WorkspaceSheet } from './src/components/WorkspaceSheet';
@@ -42,6 +43,8 @@ function Main() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountPage, setAccountPage] = useState<'settings' | 'profile' | null>(null);
+  const [profileFromSettings, setProfileFromSettings] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [approval, setApproval] = useState<Approval | null>(null);
@@ -172,6 +175,7 @@ function Main() {
       };
     });
     setDraft('');
+    if (state.profile.haptics) Vibration.vibrate(10);
     setBusy(true);
     setNotice('');
     const controller = new AbortController();
@@ -215,6 +219,34 @@ function Main() {
     }
   }
 
+  function clearAllChats() {
+    if (busy) { setNotice('Hentikan respons yang aktif terlebih dahulu.'); return; }
+    setState(previous => ({ ...previous, chats: [], selectedChatId: null }));
+    setAccountPage(null);
+    setNotice('Riwayat chat lokal sudah dihapus.');
+  }
+
+  function disconnectProvider() {
+    if (busy) { setNotice('Hentikan respons yang aktif terlebih dahulu.'); return; }
+    void saveSecret('').then(() => {
+      setKey('');
+      setModels([]);
+      setState(previous => ({
+        ...previous,
+        settings: { ...previous.settings, model: '' }
+      }));
+      setAccountPage(null);
+      setNotice('Kunci API dihapus dari penyimpanan aman.');
+    }).catch(() => setNotice('Gagal menghapus kunci API.'));
+  }
+
+  function openAccount(screen: 'settings' | 'profile', fromSettings = false) {
+    if (busy) { setNotice('Hentikan respons aktif sebelum membuka pengaturan.'); return; }
+    setSidebarOpen(false);
+    setProfileFromSettings(fromSettings);
+    setAccountPage(screen);
+  }
+
   function confirmDeleteConversation(chat: Conversation) {
     Alert.alert('Delete conversation?', chat.title, [
       { text: 'Cancel', style: 'cancel' },
@@ -234,126 +266,216 @@ function Main() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
     <StatusBar barStyle="light-content" />
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-      <View style={[style.row, {
-        height: 62, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: C.border
-      }]}>
-        <ActionIcon name="menu" onPress={() => setSidebarOpen(true)} />
-        <Pressable style={[style.row, { flex: 1, gap: 8, paddingHorizontal: 5 }]} onPress={() => setModelsOpen(true)}>
-          <Logo size={31} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: C.text, fontWeight: '800', fontSize: 17, letterSpacing: 0.4 }}>LUMAVUN</Text>
-            <Text style={{ color: C.muted, fontSize: 11 }} numberOfLines={1}>
-              {state.settings.model || 'Select AI model'} <Feather name="chevron-down" size={10} />
-            </Text>
-          </View>
-        </Pressable>
-        <ActionIcon name="folder" onPress={() => setWorkspaceOpen(true)} />
-        <ActionIcon name="edit" onPress={() => startNewChat()} />
-      </View>
 
-      <ChatView entries={current?.entries || []} busy={busy} mode={mode} onSuggestion={setDraft} />
+      {!accountPage ? <>
+      <View style={[style.row, {
+        height: 58, paddingHorizontal: 12
+      }]}>
+        <ActionIcon name="menu" onPress={() => setSidebarOpen(true)} size={23} />
+        <Pressable style={[style.row, { flex: 1, justifyContent: 'center', gap: 7 }]}
+          onPress={() => setModelsOpen(true)}>
+          <Text style={{ color: C.text, fontWeight: '700', fontSize: 17, letterSpacing: .6 }}>LUMAVUN</Text>
+          <Feather name="chevron-down" size={14} color={C.muted} />
+        </Pressable>
+        <ActionIcon name="edit" onPress={() => startNewChat()} size={21} />
+      </View>
+      <ChatView entries={current?.entries || []} busy={busy} mode={mode}
+        name={state.profile.name} largeText={state.profile.largeText} onSuggestion={setDraft} />
 
       {!!notice && <Pressable onPress={() => setNotice('')}
         style={{ paddingHorizontal: 16, paddingVertical: 7, backgroundColor: C.surface }}>
         <Text style={{ color: C.gold, fontSize: 12 }} numberOfLines={3}>{notice}  ×</Text>
       </Pressable>}
 
-      <View style={{ paddingHorizontal: 12, paddingVertical: 10,
-        borderTopColor: C.border, borderTopWidth: 1, backgroundColor: C.bg, gap: 9 }}>
-        <View style={[style.row, { justifyContent: 'space-between' }]}>
-          <View style={[style.row, { backgroundColor: C.surface, borderRadius: 18, padding: 3 }]}>
-            {(['chat', 'code'] as const).map(m => <Pressable key={m}
-              onPress={() => setConversationMode(m)} disabled={busy}
-              style={{ paddingVertical: 7, paddingHorizontal: 13, borderRadius: 15,
-                backgroundColor: mode === m ? C.accentDeep : 'transparent' }}>
-              <Text style={{ color: C.text, fontWeight: mode === m ? '700' : '400', fontSize: 12 }}>
-                {m === 'chat' ? 'Chat' : '⌘ Code Agent'}
-              </Text>
-            </Pressable>)}
-          </View>
-          <Pressable onPress={() => setWorkspaceOpen(true)} style={[style.row, { gap: 5, flex: 1, justifyContent: 'flex-end' }]}>
-            <Feather name="folder" color={C.accent} size={13} />
-            <Text style={{ color: C.muted, fontSize: 11 }} numberOfLines={1}>
-              {activeProject?.name || 'No project'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={{ backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
-          borderRadius: 23, paddingHorizontal: 9, paddingTop: 5, paddingBottom: 6 }}>
+
+      <View style={{
+        backgroundColor: C.bg, paddingHorizontal: 13, paddingTop: 8, paddingBottom: 8
+      }}>
+        <View style={{
+          backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+          borderRadius: 24, paddingHorizontal: 9, paddingTop: 5, paddingBottom: 7
+        }}>
           <TextInput value={draft} onChangeText={setDraft}
-            placeholder={mode === 'code' ? 'Ask LUMAVUN to build or edit…' : 'Message LUMAVUN…'}
+            accessibilityLabel="Pesan untuk LUMAVUN"
+            placeholder={mode === 'code' ? 'Tulis instruksi Code Agent…' : 'Chat dengan LUMAVUN…'}
             placeholderTextColor={C.subtle} multiline maxLength={12000} editable={!busy}
-            style={{ color: C.text, fontSize: 15, paddingHorizontal: 8, paddingVertical: 10, maxHeight: 130, minHeight: 44 }}
-            textAlignVertical="top" />
-          <View style={[style.row, { justifyContent: 'space-between' }]}>
-            <View style={style.row}>
-              <ActionIcon name="plus" color={C.muted} onPress={() => setWorkspaceOpen(true)} size={19} />
-              <Pressable onPress={() => setModelsOpen(true)} style={[style.row, { gap: 5, paddingHorizontal: 7 }]}>
-                <Feather name="cpu" size={13} color={C.muted} />
-                <Text style={{ color: C.muted, fontSize: 11 }} numberOfLines={1}>
-                  {state.settings.model ? state.settings.model.split('/').pop()?.slice(0, 20) : 'Model'}
-                </Text>
-              </Pressable>
-            </View>
-            <Pressable accessibilityRole="button" onPress={busy ? stop : () => { void sendMessage(); }}
-              disabled={!busy && !draft.trim()} style={{
-                width: 36, height: 36, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+            style={{
+              color: C.text, fontSize: state.profile.largeText ? 18 : 16,
+              paddingHorizontal: 10, paddingVertical: 12, maxHeight: 128, minHeight: 54
+            }} textAlignVertical="top" />
+          <View style={[style.row, { gap: 4 }]}>
+            <ActionIcon name="plus" color={C.muted} onPress={() => setWorkspaceOpen(true)} size={21} />
+            <Pressable onPress={() => setModelsOpen(true)} style={[style.row, {
+              borderRadius: 19, backgroundColor: C.raised,
+              paddingHorizontal: 13, paddingVertical: 10, gap: 6,
+              maxWidth: 208
+            }]}>
+              <Feather name="cpu" size={13} color={C.accent} />
+              <Text style={{ color: C.text, fontSize: 12, fontWeight: '600', flexShrink: 1 }}
+                numberOfLines={1}>
+                {state.settings.model ? state.settings.model.split('/').pop() : 'Pilih model'}
+              </Text>
+              <Feather name="chevron-down" size={12} color={C.muted} />
+            </Pressable>
+            <View style={{ flex: 1 }} />
+            <ActionIcon name="mic" color={C.subtle} size={19}
+              onPress={() => Alert.alert('Suara', 'Voice chat belum tersedia di versi ini.')} />
+            <Pressable accessibilityRole="button" accessibilityLabel={busy ? 'Hentikan respons' : 'Kirim pesan'}
+              onPress={busy ? stop : () => { void sendMessage(); }} disabled={!busy && !draft.trim()}
+              style={{
                 backgroundColor: busy ? C.raised : C.accent,
-                opacity: busy || draft.trim() ? 1 : .4
+                opacity: busy || draft.trim() ? 1 : .4,
+                height: 39, width: 39, borderRadius: 20, alignItems: 'center', justifyContent: 'center'
               }}>
               <Feather name={busy ? 'square' : 'arrow-up'} size={18} color={busy ? C.text : C.bg} />
             </Pressable>
           </View>
         </View>
-        <Text style={{ color: C.subtle, fontSize: 10, textAlign: 'center' }}>
-          Agent edits require approval • Provider model runs online
-        </Text>
       </View>
+      {!state.profile.hideTabs && <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+        backgroundColor: C.surface, borderRadius: 26, marginHorizontal: 13, marginBottom: 8,
+        padding: 4, borderWidth: 1, borderColor: C.border
+      }}>
+        {([
+          { id: 'chat', icon: 'message-circle', label: 'Chat' },
+          { id: 'project', icon: 'folder', label: 'Proyek' },
+          { id: 'code', icon: 'code', label: 'Code' },
+          { id: 'artifact', icon: 'layers', label: 'Artefak' }
+        ] as const).map(item => {
+          const active = (item.id === 'code' && mode === 'code') ||
+            (item.id === 'chat' && mode === 'chat');
+          return <Pressable key={item.id} accessibilityRole="tab" accessibilityState={{ selected: active }}
+            onPress={() => {
+              if (item.id === 'chat') setConversationMode('chat');
+              if (item.id === 'code') setConversationMode('code');
+              if (item.id === 'project') setWorkspaceOpen(true);
+              if (item.id === 'artifact') {
+                Alert.alert('Artefak', 'Artefak interaktif belum tersedia. File kode hasil agent dapat dilihat melalui menu Proyek.');
+              }
+            }}
+            style={{
+              flex: 1, alignItems: 'center', justifyContent: 'center',
+              paddingVertical: 10, borderRadius: 22,
+              backgroundColor: active ? C.accentDeep : 'transparent', gap: 5
+            }}>
+            <Feather name={item.icon} size={20} color={active ? C.text : C.muted} />
+            <Text style={{ color: active ? C.text : C.muted, fontSize: 11, fontWeight: active ? '700' : '500' }}>
+              {item.label}
+            </Text>
+          </Pressable>;
+        })}
+      </View>}
+      </> : <AccountScreen
+        screen={accountPage}
+        profile={state.profile}
+        chatsCount={state.chats.length}
+        projectsCount={state.projects.length}
+        hasProviderKey={!!key}
+        onBack={() => {
+          if (accountPage === 'profile' && profileFromSettings) {
+            setAccountPage('settings');
+            setProfileFromSettings(false);
+          } else {
+            setAccountPage(null);
+          }
+        }}
+        onNavigate={next => {
+          setProfileFromSettings(accountPage === 'settings' && next === 'profile');
+          setAccountPage(next);
+        }}
+        onUpdate={profile => setState(prev => ({ ...prev, profile }))}
+        onProvider={() => setSettingsOpen(true)}
+        onModels={() => setModelsOpen(true)}
+        onWorkspace={() => setWorkspaceOpen(true)}
+        onClearChats={clearAllChats}
+        onDisconnectProvider={disconnectProvider}
+      />}
     </KeyboardAvoidingView>
 
-    <Modal visible={sidebarOpen} animationType="fade" transparent onRequestClose={() => setSidebarOpen(false)}>
-      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#050510C9' }}>
-        <View style={{ width: '84%', maxWidth: 370, backgroundColor: C.surface, paddingTop: 25, paddingHorizontal: 15, paddingBottom: 30 }}>
-          <View style={[style.row, { gap: 10, marginBottom: 22 }]}>
-            <Logo size={42} />
+
+    <Modal visible={sidebarOpen} animationType="fade" transparent
+      statusBarTranslucent onRequestClose={() => setSidebarOpen(false)}>
+      <View style={{ flex: 1, flexDirection: 'row', backgroundColor: '#060608B8' }}>
+        <View style={{
+          width: '86%', maxWidth: 370, backgroundColor: C.bg,
+          paddingTop: 47, paddingHorizontal: 18, paddingBottom: 18
+        }}>
+          <View style={[style.row, { gap: 9, marginBottom: 23 }]}>
+            <Logo size={38} />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: C.text, fontSize: 19, fontWeight: '800' }}>LUMAVUN</Text>
-              <Text style={style.subtitle}>Imagine Beyond the Mist</Text>
+              <Text style={{ color: C.text, fontSize: 24, fontFamily: 'serif', fontWeight: '700' }}>LUMAVUN</Text>
+              <Text style={{ color: C.muted, fontSize: 11 }}>Imagine Beyond the Mist</Text>
             </View>
-            <ActionIcon name="x" onPress={() => setSidebarOpen(false)} />
+            <ActionIcon name="search" onPress={() => {
+              setSidebarSearch(''); 
+              Alert.alert('Cari chat', 'Masukkan kata kunci pada kotak pencarian di bawah daftar menu.');
+            }} />
           </View>
-          <Pressable onPress={() => startNewChat()} style={[style.row, { gap: 11,
-            padding: 14, borderRadius: 13, backgroundColor: C.raised, marginBottom: 12 }]}>
-            <Feather name="plus-square" color={C.accent} size={20} />
-            <Text style={[style.txt, { fontWeight: '700' }]}>New chat</Text>
+          <Pressable onPress={() => startNewChat()} style={[style.row, {
+            gap: 12, paddingHorizontal: 14, paddingVertical: 13,
+            borderRadius: 16, backgroundColor: C.raised, marginBottom: 9
+          }]}>
+            <Feather name="edit" color={C.accent} size={20} />
+            <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>Chat baru</Text>
           </Pressable>
-          <TextInput style={style.input} value={sidebarSearch} onChangeText={setSidebarSearch}
-            placeholder="Search chats" placeholderTextColor={C.subtle} />
-          <Text style={[style.label, { marginTop: 22, marginBottom: 9 }]}>RECENT CHATS</Text>
+          {([
+            { label: 'Chat', icon: 'message-circle', press: () => { setSidebarOpen(false); setAccountPage(null); } },
+            { label: 'Proyek', icon: 'folder', press: () => { setSidebarOpen(false); setWorkspaceOpen(true); } },
+            { label: 'Code Agent', icon: 'code', press: () => { setSidebarOpen(false); setConversationMode('code'); } },
+            { label: 'Artefak', icon: 'layers', press: () => Alert.alert('Artefak', 'Fitur artefak interaktif belum tersedia; gunakan proyek untuk file kode.') },
+            { label: 'Pengaturan', icon: 'settings', press: () => openAccount('settings') }
+          ] as const).map(item => (
+            <Pressable key={item.label} style={[style.row, { gap: 15, paddingHorizontal: 12, paddingVertical: 12 }]}
+              onPress={item.press}>
+              <Feather name={item.icon} size={19} color={C.muted} />
+              <Text style={{ color: C.text, fontSize: 15 }}>{item.label}</Text>
+            </Pressable>
+          ))}
+          <View style={style.divider} />
+          <TextInput style={[style.input, { marginVertical: 8, paddingVertical: 9 }]}
+            value={sidebarSearch} onChangeText={setSidebarSearch}
+            placeholder="Cari riwayat chat…" placeholderTextColor={C.subtle} />
+          <Text style={[style.label, { paddingHorizontal: 11, marginTop: 14, marginBottom: 9 }]}>
+            TERBARU
+          </Text>
           <ScrollView style={{ flex: 1 }}>
+            {state.chats.length === 0 && <Text style={[style.subtitle, { padding: 13 }]}>
+              Riwayat chat akan muncul di sini.
+            </Text>}
             {state.chats.filter(c => c.title.toLowerCase().includes(sidebarSearch.toLowerCase()))
               .sort((a, b) => b.updatedAt - a.updatedAt).map(chat =>
-              <View key={chat.id} style={[style.row, { gap: 4, paddingVertical: 4,
-                borderRadius: 12, backgroundColor: chat.id === state.selectedChatId ? C.raised : 'transparent' }]}>
+              <View key={chat.id} style={[style.row, {
+                paddingVertical: 3, borderRadius: 12,
+                backgroundColor: chat.id === state.selectedChatId ? C.raised : 'transparent'
+              }]}>
                 <Pressable onPress={() => {
-                  if (busy) { setNotice('Stop the running response first.'); return; }
-                  setState(s => ({ ...s, selectedChatId: chat.id }));
+                  if (busy) { setNotice('Hentikan respons yang sedang aktif.'); return; }
+                  setState(prev => ({ ...prev, selectedChatId: chat.id }));
                   setModeDraft(chat.mode); setSidebarOpen(false);
-                }} style={[style.row, { flex: 1, gap: 10, padding: 8 }]}>
-                  <Feather name={chat.mode === 'code' ? 'code' : 'message-square'} color={C.muted} size={16} />
-                  <Text numberOfLines={1} style={{ color: C.text, flex: 1, fontSize: 13 }}>{chat.title}</Text>
+                }} style={[style.row, { gap: 11, flex: 1, paddingVertical: 11, paddingHorizontal: 8 }]}>
+                  <Feather name={chat.mode === 'code' ? 'code' : 'message-square'} color={C.muted} size={17} />
+                  <Text numberOfLines={1} style={{ color: C.text, flex: 1, fontSize: 13.5 }}>{chat.title}</Text>
                 </Pressable>
-                <ActionIcon name="trash-2" size={15} color={C.subtle} onPress={() => confirmDeleteConversation(chat)} />
+                <ActionIcon name="trash-2" size={15} color={C.subtle}
+                  onPress={() => confirmDeleteConversation(chat)} />
               </View>)}
           </ScrollView>
           <View style={style.divider} />
-          <Pressable style={[style.row, { gap: 12, padding: 13 }]} onPress={() => { setSidebarOpen(false); setWorkspaceOpen(true); }}>
-            <Feather name="folder" color={C.accent} size={19} /><Text style={style.txt}>Code workspace</Text>
+          <Pressable accessibilityRole="button" onPress={() => openAccount('profile')}
+            style={[style.row, {
+              paddingVertical: 14, paddingHorizontal: 10, gap: 10,
+              backgroundColor: C.surface, borderRadius: 17
+            }]}>
+            <Logo size={43} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }} numberOfLines={1}>
+                {state.profile.name}
+              </Text>
+              <Text style={{ color: C.muted, fontSize: 12 }}>Profil dan pengaturan</Text>
+            </View>
+            <Feather name="chevron-right" color={C.muted} size={20} />
           </Pressable>
-          <Pressable style={[style.row, { gap: 12, padding: 13 }]} onPress={() => { setSidebarOpen(false); setSettingsOpen(true); }}>
-            <Feather name="settings" color={C.accent} size={19} /><Text style={style.txt}>Settings & AI provider</Text>
-          </Pressable>
-          <Text style={[style.subtitle, { padding: 12, fontSize: 11 }]}>LUMAVUN Agent 0.1.0 • Device-first MVP</Text>
         </View>
         <Pressable style={{ flex: 1 }} onPress={() => setSidebarOpen(false)} />
       </View>
