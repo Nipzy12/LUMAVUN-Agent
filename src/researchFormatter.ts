@@ -79,3 +79,17 @@ export function researchSourcesFooter(sources:WebSource[],limit=5):string {
 export function isResearchTestPrompt(query:string):boolean {
   return /^(tes|test|testing|cek|ping|coba|tes riset|tes research|test web|cek web|tes search)[.!? ]*$/i.test(query.trim());
 }
+
+/** Tiny local models sometimes echo MCP JSON verbatim. Prefer a grounded extractive answer. */
+export function polishLocalResearchAnswer(answer:string,sources:WebSource[],query:string):string{
+  const text=answer.trim();
+  const raw=/^(?:\\?\{\s*["']content|data web dari|pencarian\s+1\/\d+|hasil riset langsung dari)/i.test(text)||
+    /"type"\s*:\s*"text"|"content"\s*:\s*\[|\\n\\n\\n/.test(text)||
+    text.length>3200;
+  if(text && !raw)return text;
+  if(!sources.length)return 'Tidak ditemukan sumber yang dapat mendukung jawaban untuk: '+query.slice(0,180);
+  return 'Hasil pencarian untuk “'+query.slice(0,150)+'”:\n\n'+
+    sources.slice(0,4).map((source,i)=>(i+1)+'. '+source.title+
+      '\n'+(source.snippet||'Sumber tersedia, tetapi tidak ada cuplikan yang dapat diringkas.').slice(0,210)).join('\n\n')+
+    '\n\nRingkasan ini berasal dari cuplikan hasil pencarian, bukan pembacaan penuh setiap situs.';
+}
