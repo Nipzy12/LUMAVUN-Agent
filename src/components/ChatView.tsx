@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, type ScrollViewInstance, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import type { Entry } from '../types';
@@ -32,7 +32,7 @@ export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, o
   entries: Entry[]; mode: 'chat' | 'code'; busy: boolean; onSuggestion: (text: string) => void;
   name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void; keyboardVisible?: boolean;
 }) {
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   useEffect(() => {
     if(entries.length || keyboardVisible) {
       const timer=setTimeout(()=>scroll.current?.scrollToEnd({animated:true}),90);
