@@ -6,7 +6,10 @@ export const FEATURED_SKILLS:SkillCandidate[]=[
  {repo:'anthropics/skills',path:'skills/pdf/SKILL.md',name:'PDF',description:'Panduan bekerja dengan dokumen PDF'},
  {repo:'anthropics/skills',path:'skills/docx/SKILL.md',name:'DOCX',description:'Panduan dokumen Word'},
  {repo:'anthropics/skills',path:'skills/pptx/SKILL.md',name:'PPTX',description:'Panduan presentasi'},
- {repo:'anthropics/skills',path:'skills/xlsx/SKILL.md',name:'XLSX',description:'Panduan spreadsheet'}
+ {repo:'anthropics/skills',path:'skills/xlsx/SKILL.md',name:'XLSX',description:'Panduan spreadsheet'},
+ {repo:'Aas-ee/open-webSearch',path:'skills/open-websearch/SKILL.md',name:'Open WebSearch',description:'Panduan integrasi web search; membutuhkan daemon/server aktif'},
+ {repo:'Jakeschincariol/trader-skill',path:'trader-risk/SKILL.md',name:'Trader Risk',description:'Metode risiko trading; skrip Python tidak berjalan di APK'},
+ {repo:'Jakeschincariol/replica-skill',path:'replica-recon/SKILL.md',name:'Replica Recon',description:'Metode pemetaan fitur dan alur aplikasi secara clean-room'}
 ];
 export function skillUrl(repo:string,path:string){
   if(!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repo)||!/^([a-z0-9_.-]+\/)*[a-z0-9_.-]+\.md$/i.test(path)||
