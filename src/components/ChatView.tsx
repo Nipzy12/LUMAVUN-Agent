@@ -28,9 +28,9 @@ function TextWithCode({ value, largeText = false }: { value: string; largeText?:
   </View>;
 }
 
-export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, onSaveCode, keyboardVisible = false }: {
+export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, onSaveCode, keyboardVisible = false, showSuggestions = true }: {
   entries: Entry[]; mode: 'chat' | 'code'; busy: boolean; onSuggestion: (text: string) => void;
-  name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void; keyboardVisible?: boolean;
+  name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void; keyboardVisible?: boolean; showSuggestions?: boolean;
 }) {
   const scroll = useRef<ScrollViewInstance>(null);
   useEffect(() => {
@@ -57,7 +57,7 @@ export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, o
           ? 'Code Agent siap membaca dan mengubah file proyek dengan persetujuanmu.'
           : 'Imagine Beyond the Mist. Mulai dari satu pertanyaan.'}
       </Text>
-      <View style={{
+      {showSuggestions && <View style={{
         flexDirection: 'row', flexWrap: 'wrap', gap: 9,
         marginTop: 23, justifyContent: 'center', maxWidth: 355
       }}>
@@ -74,7 +74,7 @@ export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, o
           onPress={() => onSuggestion(text)}>
           <Text style={{ color: C.text, fontSize: 12.5, lineHeight: 19, textAlign: 'center' }}>{text}</Text>
         </Pressable>)}
-      </View>
+      </View>}
     </View> : <View style={{ gap: 19 }}>
       {entries.map(entry => {
         if (entry.role === 'tool') return <View key={entry.id} style={{
