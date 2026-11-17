@@ -5,9 +5,12 @@ export type ToolCall = {
   type: 'function';
   function: { name: string; arguments: string };
 };
+export type APIContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
 export type APIMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | APIContentPart[] | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 };
