@@ -704,7 +704,7 @@ function Main() {
     <ActivityIndicator color={C.accent} size="large" />
   </SafeAreaView>;
 
-  return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={keyboardVisible?['top']:['top','bottom']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: accountPage?'#FBFAFC':C.bg }} edges={keyboardVisible?['top']:['top','bottom']}>
     <StatusBar barStyle={accountPage?'dark-content':'light-content'}
       backgroundColor={accountPage?'#FBFAFC':C.bg}/>
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1 }}>
