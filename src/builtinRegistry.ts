@@ -50,11 +50,12 @@ export const BUILTIN_REFERENCES: readonly BuiltinReference[] = Object.freeze([
 export function builtinById(id: string): BuiltinReference | undefined {
   return BUILTIN_REFERENCES.find(x => x.id === id);
 }
-export function allResearchConnectors(custom: Connector[]): Connector[] {
-  return [...custom.filter(c=>c.enabled && c.id!==BUILTIN_EXA_CONNECTOR.id), BUILTIN_EXA_CONNECTOR];
+export function allResearchConnectors(custom: Connector[], exaEnabled=true): Connector[] {
+  return [...custom.filter(c=>c.enabled && c.id!==BUILTIN_EXA_CONNECTOR.id), ...(exaEnabled?[BUILTIN_EXA_CONNECTOR]:[])];
 }
 /** Scope immutable skills by intent; never run upstream code or copy its system prompts. */
-export function builtinGuidance(question: string): string {
+export function builtinGuidance(question: string, enabled=true): string {
+  if(!enabled)return '';
   const text = question.toLowerCase();
   const relevant = BUILTIN_REFERENCES.filter(x=>x.prompt && (
     (x.id==='trader-skill' && /trading|trader|saham|market|forex|btc|crypto|backtest|broker|risiko|lot\b/.test(text)) ||
