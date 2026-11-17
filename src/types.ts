@@ -19,7 +19,7 @@ export type Conversation = {
   entries: Entry[];
 };
 
-export type ProviderKind = 'openai' | 'openrouter' | 'custom';
+export type ProviderKind = 'openai' | 'openrouter' | 'cloudflare' | 'custom';
 
 export type Settings = {
   provider: ProviderKind;
