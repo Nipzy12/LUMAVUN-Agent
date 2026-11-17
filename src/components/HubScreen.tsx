@@ -75,7 +75,11 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    if(key==='sensitiveMemory'&&value&&!extra.capabilities.chatMemory) {
      Alert.alert('Memori belum aktif','Aktifkan pembuatan memori terlebih dahulu.'); return;
    }
-   change({capabilities:{...extra.capabilities,[key]:value}});
+   const capabilities={...extra.capabilities,[key]:value};
+   change(key==='webSearch'
+     ? {capabilities,brain:{...extra.brain,research:value
+         ? (extra.brain.research==='off'?'web':extra.brain.research) : 'off'}}
+     : {capabilities});
  };
  const saveConnector=async()=>{
    if(!connectorName.trim()||!validMcpUrl(connectorUrl.trim())){
@@ -280,7 +284,8 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         ] as const).map(option=><Row key={option.id}
           icon={extra.brain.research===option.id?'check-circle':'circle'}
           title={option.title} detail={option.detail}
-          onPress={()=>change({brain:{...extra.brain,research:option.id}})}/>)}
+          onPress={()=>change({brain:{...extra.brain,research:option.id},
+          capabilities:{...extra.capabilities,webSearch:option.id!=='off'}})}/>)}
       </Section>
       <Section title="Prompt kustom">
         <Text style={[tiny,{paddingHorizontal:14,paddingTop:12}]}>Instruksi untuk semua Chat dan Work, maks. 4.000 karakter. Tidak mengesampingkan izin tool.</Text>
