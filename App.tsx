@@ -8,6 +8,9 @@ import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
 import { runResearch } from './src/research';
 import { buildBrainPrompt } from './src/intelligence';
+import { personalityPrompt, normalizePreferences } from './src/personalization';
+import { localLibraryContext } from './src/localLibrary';
+import { clearReferencePhotos } from './src/profilePhotos';
 import { extractStylePreference, memoryPrompt, isSensitiveMemoryText, type MemoryRecord } from './src/memoryPolicy';
 import { listMemories, migrateLegacyMemories, saveMemory, deleteMemory, clearMemories } from './src/memoryDb';
 import { isResearchTestPrompt, polishLocalResearchAnswer } from './src/researchFormatter';
@@ -31,7 +34,7 @@ import { ProjectsScreen } from './src/components/ProjectsScreen';
 import { CodeWorkScreen } from './src/components/CodeWorkScreen';
 import { ArtifactsScreen } from './src/components/ArtifactsScreen';
 import { ArtifactDetail } from './src/components/ArtifactDetail';
-import { AccountScreen } from './src/components/AccountScreen';
+import { AccountScreen, type AccountPage } from './src/components/AccountScreen';
 import { ModelSheet } from './src/components/ModelSheet';
 import { SettingsSheet } from './src/components/SettingsSheet';
 import { WorkspaceSheet } from './src/components/WorkspaceSheet';
@@ -77,8 +80,9 @@ function Main() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [accountPage, setAccountPage] = useState<'settings' | 'profile' | null>(null);
-  const [profileFromSettings, setProfileFromSettings] = useState(false);
+  const [accountPage, setAccountPage] = useState<AccountPage | null>(null);
+  const [accountHistory,setAccountHistory] = useState<AccountPage[]>([]);
+  const [hubReturnPage,setHubReturnPage] = useState<AccountPage>('settings');
   const [modelsOpen, setModelsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [approval, setApproval] = useState<Approval | null>(null);
@@ -636,17 +640,45 @@ function Main() {
     }).catch(() => setNotice('Gagal menghapus kunci API.'));
   }
 
+  async function deleteLocalAccount(){
+    if(busy){setNotice('Hentikan respons sebelum menghapus data.');return;}
+    try{
+      await saveQueue.current;
+      for(const project of state.projects){
+        try{deleteProjectFolder(project.id)}catch{ /* missing local folder; continue clearing metadata */ }
+      }
+      clearReferencePhotos(state.profile.referencePhotoUris);
+      await clearMemories();
+      for(const connector of state.extra.connectors){
+        await SecureStore.deleteItemAsync('lumavun.mcp.'+connector.id);
+      }
+      await SecureStore.deleteItemAsync('lumavun.mcp.builtin_exa_search');
+      await saveSecret('');
+      await saveState(INITIAL_STATE);
+      setKey('');
+      setModels([]);
+      setMemoryRecords([]);
+      setState(INITIAL_STATE);
+      setAccountPage(null);
+      setAccountHistory([]);
+      setHubPage(null);
+      setNotice('Data akun lokal sudah dihapus. Akun penyedia AI eksternal tidak terpengaruh.');
+    }catch(err){Alert.alert('Penghapusan tidak lengkap',
+      'Sebagian data mungkin belum terhapus: '+String(err instanceof Error?err.message:err));}
+  }
+
   function openHub(page:HubPage){
     if(busy){setNotice('Hentikan proses aktif dahulu.');return;}
+    setHubReturnPage(accountPage||'settings');
     setAccountPage(null);
     setSidebarOpen(false);
     setHubPage(page);
   }
-  function openAccount(screen: 'settings' | 'profile', fromSettings = false) {
+  function openAccount(screen: AccountPage) {
     if (busy) { setNotice('Hentikan respons aktif sebelum membuka pengaturan.'); return; }
     setSidebarOpen(false);
     setHubPage(null);
-    setProfileFromSettings(fromSettings);
+    setAccountHistory([]);
     setAccountPage(screen);
   }
 
@@ -681,7 +713,7 @@ function Main() {
         cloudModels={models}
         selectedCloud={state.settings.model}
         onPage={setHubPage}
-        onBack={()=>{setHubPage(null);setAccountPage('settings')}}
+        onBack={()=>{setHubPage(null);setAccountPage(hubReturnPage)}}
         onChange={extra=>setState(prev=>({...prev,extra}))}
         onPickCloud={model=>{handlePickModel(model);setState(prev=>({...prev,extra:{...prev.extra,localModelId:''}}));}}
         onProvider={()=>setSettingsOpen(true)}
@@ -827,27 +859,28 @@ function Main() {
       </> : <AccountScreen
         screen={accountPage}
         profile={state.profile}
+        extra={state.extra}
         chatsCount={state.chats.length}
         projectsCount={state.projects.length}
+        memoryCount={memoryRecords.length}
         hasProviderKey={!!key}
         onBack={() => {
-          if (accountPage === 'profile' && profileFromSettings) {
-            setAccountPage('settings');
-            setProfileFromSettings(false);
-          } else {
-            setAccountPage(null);
-          }
+          const previous=accountHistory[accountHistory.length-1];
+          setAccountHistory(history=>history.slice(0,-1));
+          setAccountPage(previous||null);
         }}
         onNavigate={next => {
-          setProfileFromSettings(accountPage === 'settings' && next === 'profile');
+          if(accountPage)setAccountHistory(history=>[...history,accountPage]);
           setAccountPage(next);
         }}
-        onUpdate={profile => setState(prev => ({ ...prev, profile }))}
+        onUpdate={profile => setState(prev => ({ ...prev, profile:normalizePreferences(profile) }))}
+        onUpdateExtra={extra=>setState(prev=>({...prev,extra}))}
         onProvider={() => setSettingsOpen(true)}
         onModels={() => setModelsOpen(true)}
         onWorkspace={() => setWorkspaceOpen(true)}
         onClearChats={clearAllChats}
         onDisconnectProvider={disconnectProvider}
+        onDeleteAccount={()=>{void deleteLocalAccount()}}
         onHub={openHub}
       />}
     </KeyboardAvoidingView>
