@@ -12,12 +12,17 @@ import { clearMcpSession, listMcpTools, type MCPTool } from '../mcpClient';
 import { GGUF_CATALOG, installedModelIds, bytesOnDisk, cancelModelDownload, downloadModel, removeModel, unloadModel } from '../localAI';
 import { BUILTIN_REFERENCES, BUILTIN_EXA_CONNECTOR } from '../builtinRegistry';
 import type { ModelInfo } from '../types';
+import type { MemoryRecord } from '../memoryPolicy';
 import { id } from '../paths';
 import { ActionIcon, C, PrimaryButton, Sheet, style } from '../ui';
 
 export type HubPage='capabilities'|'connectors'|'permissions'|'usage'|'skills'|'models'|'memory'|'intelligence'|'catalog';
 type Props={
  page:HubPage; extra:ExtraState;
+ memories:MemoryRecord[];
+ onSaveMemory(text:string):void;
+ onDeleteMemory(id:string):void;
+ onClearMemories():void;
  cloudModels:ModelInfo[]; selectedCloud:string;
  onBack():void;
  onPage(page:HubPage):void;
@@ -44,7 +49,7 @@ function Row({icon,title,detail,onPress,right}:{icon:keyof typeof Feather.glyphM
    {right||(onPress?<Feather name="chevron-right" color={C.subtle} size={17}/>:null)}
  </Pressable>;
 }
-export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,onChange,onPickCloud,onProvider}:Props){
+export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,onChange,onPickCloud,onProvider,memories,onSaveMemory,onDeleteMemory,onClearMemories}:Props){
  const [addConnector,setAddConnector]=useState(false);
  const [connectorName,setConnectorName]=useState('');
  const [connectorUrl,setConnectorUrl]=useState('');
@@ -170,7 +175,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
       <Section title="Memori">
         {switchRow('chatMemory','Pembuatan memori dari chat','Simpan catatan lokal hanya lewat perintah "ingat:"')}
         {switchRow('sensitiveMemory','Sertakan topik sensitif dalam memori','Secara default tidak menyimpan topik sensitif')}
-        <Row icon="file-text" title="File memori" detail={extra.memoryNotes.length+' catatan tersimpan'} onPress={()=>onPage('memory')}/>
+        <Row icon="file-text" title="File memori" detail={memories.length+' catatan SQLite lokal'} onPress={()=>onPage('memory')}/>
       </Section>
       <Section title="Akses alat">
         {(['auto','ask','always'] as const).map(access=>
@@ -481,21 +486,40 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         </Section>)}
     </>}
     {page==='memory'&&<>
-      <Text style={[tiny,{marginBottom:10}]}>Catatan tersimpan lokal, hanya digunakan ketika memori diaktifkan.</Text>
-      <TextInput style={[style.input,{minHeight:98,textAlignVertical:'top'}]} multiline
-        placeholder="Catatan memori baru" placeholderTextColor={C.subtle} value={note} onChangeText={setNote}/>
-      <PrimaryButton title="Tambah memori" onPress={()=>{
+      <Text style={[tiny,{marginBottom:10,lineHeight:20}]}>Memori disimpan di SQLite privat pada perangkat ini, bukan model yang dilatih ulang. Saat memori aktif, catatan relevan dapat dikirim sebagai konteks ke model cloud.</Text>
+      <Section title="Pengaturan memori">
+        {switchRow('chatMemory','Gunakan memori','Memori relevan disertakan hanya jika diaktifkan')}
+        <Row icon="edit-3" title="Pelajari preferensi gaya otomatis" detail="Hanya instruksi gaya yang eksplisit, tanpa menyimpan seluruh chat"
+          right={<Switch value={extra.autoStyleMemory} disabled={!extra.capabilities.chatMemory}
+            onValueChange={value=>change({autoStyleMemory:value})}/>}/>
+      </Section>
+      <TextInput style={[style.input,{minHeight:98,textAlignVertical:'top'}]} multiline maxLength={350}
+        placeholder="Simpan preferensi atau catatan yang boleh diingat…" placeholderTextColor={C.subtle}
+        value={note} onChangeText={setNote}/>
+      <PrimaryButton title="Simpan catatan di SQLite" onPress={()=>{
         if(!note.trim())return;
-        change({memoryNotes:[...extra.memoryNotes,{id:id('memory'),text:note.trim().slice(0,2000),createdAt:Date.now()}]});
+        onSaveMemory(note.trim());
         setNote('');
       }}/>
-      <Section title="Memori tersimpan">
-        {extra.memoryNotes.map(m=><View key={m.id} style={[style.row,{padding:13,gap:10,borderBottomWidth:1,borderColor:C.border}]}>
-          <Text style={{color:C.text,flex:1,lineHeight:22}}>{m.text}</Text>
-          <ActionIcon name="trash-2" color={C.danger} size={17}
-            onPress={()=>change({memoryNotes:extra.memoryNotes.filter(x=>x.id!==m.id)})}/>
+      <Section title={'Memori SQLite ('+memories.length+')'}>
+        {memories.length===0&&<Text style={[tiny,{padding:14}]}>Belum ada memori. Tambahkan catatan atau gunakan perintah “ingat:”.</Text>}
+        {memories.map(m=><View key={m.id} style={[style.row,{
+          padding:13,gap:10,borderBottomWidth:1,borderColor:C.border
+        }]}>
+          <View style={{flex:1,gap:6}}>
+            <Text style={{color:C.text,lineHeight:21}}>{m.text}</Text>
+            <Text style={tiny}>{m.kind==='style'?'Preferensi gaya':'Catatan'} • {m.source==='explicit'?'Disimpan langsung':'Diambil dari instruksi gaya'}</Text>
+          </View>
+          <ActionIcon name="trash-2" color={C.danger} size={17} onPress={()=>onDeleteMemory(m.id)}/>
         </View>)}
       </Section>
+      {memories.length>0&&<Pressable onPress={()=>Alert.alert('Hapus seluruh memori?',
+        'Tindakan ini menghapus catatan SQLite lokal dan tidak dapat dibatalkan.',[
+        {text:'Batal',style:'cancel'},
+        {text:'Hapus semua',style:'destructive',onPress:onClearMemories}
+      ])} style={{padding:15,backgroundColor:C.raised,borderRadius:12}}>
+        <Text style={{color:C.danger,textAlign:'center'}}>Hapus seluruh database memori</Text>
+      </Pressable>}
     </>}
    </ScrollView>
    <Sheet open={addConnector} title="Tambahkan MCP server" onClose={()=>setAddConnector(false)}>
