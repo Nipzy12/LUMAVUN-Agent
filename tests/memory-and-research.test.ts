@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {extractWebSources,summarizeWebSources,researchSourcesFooter,isResearchTestPrompt} from '../src/researchFormatter';
+import {extractWebSources,summarizeWebSources,researchSourcesFooter,isResearchTestPrompt,polishLocalResearchAnswer} from '../src/researchFormatter';
 import {extractStylePreference,memoryKey,isSensitiveMemoryText,pickMemory,memoryPrompt,type MemoryRecord} from '../src/memoryPolicy';
 import {CLOUDFLARE_MODELS,PRESETS,fetchModels} from '../src/provider';
 
@@ -57,4 +57,14 @@ test('Cloudflare Workers AI catalogue includes official GPT-OSS 120B',async()=>{
   assert.ok(CLOUDFLARE_MODELS.some(x=>x.id==='@cf/openai/gpt-oss-120b'));
   const items=await fetchModels({provider:'cloudflare',baseUrl:'x',model:'',temperature:0.3},'');
   assert.deepEqual(items,CLOUDFLARE_MODELS);
+});
+
+test('local GGUF raw Exa response is replaced with short extractive report',()=>{
+  const source={title:'Situs pendidikan',url:'https://example.edu/article',
+    snippet:'Informasi dan berita pendidikan terbaru.'};
+  const out=polishLocalResearchAnswer('{"content":[{"type":"text","text":"very long dump"}]}',[source],'berita pendidikan');
+  assert.match(out,/Hasil pencarian untuk/);
+  assert.match(out,/Informasi dan berita pendidikan terbaru/);
+  assert.doesNotMatch(out,/"content"/);
+  assert.equal(polishLocalResearchAnswer('Berikut jawaban ringkas.',[source],'test'),'Berikut jawaban ringkas.');
 });
