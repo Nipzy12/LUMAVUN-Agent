@@ -405,10 +405,12 @@ function Main() {
       const localLibrary=state.profile.librarySearch&&!state.profile.quickAnswers?
         localLibraryContext(content,state.chats,state.artifacts,state.projects):'';
       const contextText=buildBrainPrompt(
-        state.profile.quickAnswers?{...state.extra.brain,reasoning:'fast',research:'off'}:state.extra.brain,
+        state.profile.quickAnswers?{...state.extra.brain,reasoning:'fast',research:'off',customPrompt:''}:state.extra.brain,
         mainPage==='code'?'work':'chat',
         localSelected?state.extra.localModelId:state.settings.model)+'\n\n'+
-        personalityPrompt(state.profile)+'\n\n'+
+        (state.profile.quickAnswers?
+          (state.profile.appLanguage==='en'?'Respond in English.':'Jawab dalam bahasa Indonesia.') :
+          personalityPrompt(state.profile))+'\n\n'+
         (state.profile.quickAnswers?'':skillNotes+
           builtinGuidance(content,state.extra.builtinSkillsEnabled))+relevantMemories+localLibrary+
         (project?.customInstructions?'\nProject instructions:\n'+project.customInstructions.slice(0,7000):'')+
