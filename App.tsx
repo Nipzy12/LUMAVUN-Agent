@@ -10,7 +10,7 @@ import { runResearch } from './src/research';
 import { buildBrainPrompt } from './src/intelligence';
 import { extractStylePreference, memoryPrompt, isSensitiveMemoryText, type MemoryRecord } from './src/memoryPolicy';
 import { listMemories, migrateLegacyMemories, saveMemory, deleteMemory, clearMemories } from './src/memoryDb';
-import { isResearchTestPrompt } from './src/researchFormatter';
+import { isResearchTestPrompt, polishLocalResearchAnswer } from './src/researchFormatter';
 import { allResearchConnectors, builtinGuidance, modelIdentityAnswer } from './src/builtinRegistry';
 import { runDirectWeb } from './src/directResearch';
 import { completeLocalWork } from './src/localWork';
@@ -483,6 +483,7 @@ function Main() {
         const modelId=state.extra.localModelId;
         let extraWebContext='';
         let webSources:string[]=[];
+        let webStructuredSources:import('./src/researchFormatter').WebSource[]=[];
         if(state.extra.capabilities.webSearch && state.extra.brain.research!=='off') {
           const result=await runDirectWeb(content,allResearchConnectors(state.extra.connectors,state.extra.builtinExaEnabled),
             state.extra.brain.research==='deep'?'deep':'web',{
@@ -500,6 +501,7 @@ function Main() {
               signal:controller.signal
             });
           webSources=result.urls;
+          webStructuredSources=result.sources;
           extraWebContext='Hasil pencarian terpilih dari '+result.provider+':\n'+
             result.evidence.slice(0,1950)+'\nBerikan sintesis singkat, jangan ulangi JSON atau konten mentah. Jelaskan batas bukti.';
         }
@@ -509,7 +511,7 @@ function Main() {
           ...(extraWebContext?[{role:'user' as const,content:extraWebContext}]:[])
         ];
         const result=await completeLocal(modelId,localMessages,controller.signal);
-        addEntry(chatId,'assistant',result.trim()+(webSources.length?
+        addEntry(chatId,'assistant',(webSources.length ? polishLocalResearchAnswer(result,webStructuredSources,content) : result.trim())+(webSources.length?
           '\n\nSumber hasil pencarian:\n'+webSources.slice(0,5).map((u,i)=>(i+1)+'. '+u).join('\n'):
           '\n\nTidak ada URL sumber yang bisa diverifikasi.'));
 
