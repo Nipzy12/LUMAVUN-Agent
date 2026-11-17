@@ -29,7 +29,8 @@
     "llama.rn": "0.12.9",
     "expo-location": "*",
     "expo-calendar": "*",
-    "expo-build-properties": "*"
+    "expo-build-properties": "*",
+    "expo-image-picker": "~58.0.10"
   },
   "devDependencies": {
     "typescript": "~6.0.3",
