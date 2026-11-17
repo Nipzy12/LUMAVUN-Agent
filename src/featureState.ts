@@ -22,6 +22,8 @@ export const DEFAULT_BRAIN: BrainSettings = {
 export type ExtraState = {
   capabilities:CapabilityState;
   brain:BrainSettings;
+  builtinExaEnabled:boolean;
+  builtinSkillsEnabled:boolean;
   connectorDiscovery:boolean;
   connectors:Connector[];
   skills:Skill[];
@@ -31,12 +33,14 @@ export type ExtraState = {
   localModelInstalled:string[];
 };
 export const DEFAULT_EXTRA: ExtraState = {
-  capabilities:DEFAULT_CAPABILITIES,brain:DEFAULT_BRAIN,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
+  capabilities:DEFAULT_CAPABILITIES,brain:DEFAULT_BRAIN,builtinExaEnabled:true,builtinSkillsEnabled:true,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
   localModelId:'',localModelInstalled:[]
 };
 export function withExtra(raw: Partial<ExtraState>):ExtraState {
   return {...DEFAULT_EXTRA,...raw,
     capabilities:{...DEFAULT_CAPABILITIES,...(raw.capabilities||{})},
+    builtinExaEnabled:raw.builtinExaEnabled!==false,
+    builtinSkillsEnabled:raw.builtinSkillsEnabled!==false,
     brain:{...DEFAULT_BRAIN,...(raw.brain||{}),
       customPrompt:typeof raw.brain?.customPrompt==='string' ? raw.brain.customPrompt.slice(0,4000) : ''},
     connectors:Array.isArray(raw.connectors)?raw.connectors:[],
