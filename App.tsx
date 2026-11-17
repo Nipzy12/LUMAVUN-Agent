@@ -376,7 +376,7 @@ function Main() {
         const projectId = state.selectedProjectId;
         const externalMap=new Map<string,{connector:typeof state.extra.connectors[number];tool:string;token:string}>();
         const externalTools:APITool[]=[];
-        for(const connector of state.extra.connectors.filter(x=>x.enabled)) {
+        for(const connector of state.extra.connectors.filter(x=>x.enabled&&!localSelected)) {
           try {
             const token=await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
             const tools=await listMcpTools(connector,token);
@@ -404,7 +404,14 @@ function Main() {
           },
           approveReads: state.extra.capabilities.toolAccess==='ask',
           complete: async (history, tools, signal) => {
-            const result=await createCompletion(state.settings, key, history, { tools, signal });
+            if(localSelected){
+               const localResult=await completeLocalWork(state.extra.localModelId,history,tools,signal);
+               setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
+                 at:Date.now(),kind:'local',model:localResult.model,promptTokens:null,completionTokens:null
+               })}}));
+               return localResult;
+             }
+             const result=await createCompletion(state.settings, key, history, { tools, signal });
             setState(prev=>({...prev,extra:{...prev.extra,usageEvents:addUsage(prev.extra.usageEvents,{
               at:Date.now(),kind:'agent',model:result.model,
               promptTokens:result.usage?.prompt_tokens??null,
@@ -453,7 +460,7 @@ function Main() {
               try{
                 const token=await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
                 const tools=await listMcpTools(connector,token);
-                for(const tool of tools.filter(t=>/search|web|browse/i.test(t.name)).slice(0,10)){
+                for(const tool of tools.filter(t=>/search|web|browse|fetch|read_url|open_url/i.test(t.name)).slice(0,12)){
                   const def=asAgentTool(connector,tool);
                   registry.set(def.function.name,{connector,tool:tool.name,token});
                   searchTools.push(def);
@@ -462,7 +469,9 @@ function Main() {
             }
             if(searchTools.length){
               didSearch=true;
-              const augmented=await runConnectedChat(cloudHistory,{
+              const augmented=await runResearch(cloudHistory,{
+                 mode:state.extra.brain.research==='deep'?'deep':'web',
+                 event:message=>addEntry(chatId,'tool',message),
                 tools:searchTools,signal:controller.signal,
                 complete:async (history,tools)=>{
                   const response=await createCompletion(state.settings,key,history,{tools,signal:controller.signal});
@@ -487,7 +496,8 @@ function Main() {
               });
               addEntry(chatId,'assistant',augmented.content);
             }else{
-              setNotice('Pencarian web aktif, tetapi belum ada MCP search yang terhubung.');
+              addEntry(chatId,'assistant','Riset internet tidak tersedia: hubungkan MCP search/browse dahulu. Tidak ada pencarian yang dijalankan.');
+               didSearch=true;
             }
           }
           if(didSearch)return;
