@@ -10,11 +10,12 @@ import { DEFAULT_CAPABILITIES, validMcpUrl, usageSummary } from '../featureState
 import { FEATURED_SKILLS, getSkill, type SkillCandidate } from '../githubSkills';
 import { listMcpTools, type MCPTool } from '../mcpClient';
 import { GGUF_CATALOG, installedModelIds, bytesOnDisk, cancelModelDownload, downloadModel, removeModel, unloadModel } from '../localAI';
+import { BUILTIN_REFERENCES, BUILTIN_EXA_CONNECTOR } from '../builtinRegistry';
 import type { ModelInfo } from '../types';
 import { id } from '../paths';
 import { ActionIcon, C, PrimaryButton, Sheet, style } from '../ui';
 
-export type HubPage='capabilities'|'connectors'|'permissions'|'usage'|'skills'|'models'|'memory'|'intelligence';
+export type HubPage='capabilities'|'connectors'|'permissions'|'usage'|'skills'|'models'|'memory'|'intelligence'|'catalog';
 type Props={
  page:HubPage; extra:ExtraState;
  cloudModels:ModelInfo[]; selectedCloud:string;
@@ -128,7 +129,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    finally{setModelBusy('');}
  };
  const pageTitle:Record<HubPage,string>={capabilities:'Kemampuan',connectors:'Konektor',permissions:'Izin',
-   usage:'Penggunaan dan batasan',skills:'Skill GitHub',models:'Model AI',memory:'File memori',intelligence:'Otak AI LUMAVUN'};
+   usage:'Penggunaan dan batasan',skills:'Skill GitHub',models:'Model AI',memory:'File memori',intelligence:'Otak AI LUMAVUN',catalog:'Integrasi Bawaan'};
  const switchRow=(key:CapabilityKey,title:string,detail:string,disabled=false)=>
    <Row icon={key==='webSearch'?'globe':key==='chatMemory'?'bookmark':key==='codeTools'?'code':'sliders'}
      title={title} detail={detail}
@@ -153,7 +154,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    <ScrollView style={{flex:1}} contentContainerStyle={{paddingHorizontal:15,paddingTop:18,paddingBottom:55}}>
     {page==='capabilities'&&<>
       <Section title="Kemampuan">
-        {switchRow('webSearch','Pencarian web','Aktif hanya dengan konektor pencarian MCP yang tersedia')}
+        {switchRow('webSearch','Pencarian web','Exa MCP tersedia sebagai sumber bawaan; koneksi dan batas tetap bergantung server')}
         {switchRow('artifacts','Artefak','Simpan snapshot kode hasil Code Agent dan chat')}
         {switchRow('visualizations','Visualisasi dalam chat (BETA)','Pratinjau HTML lokal melalui Artefak')}
         {switchRow('codeTools','Eksekusi kode dan pembuatan file','Menulis file sandbox; tidak menjalankan shell')}
@@ -174,13 +175,29 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
       </Section>
       <Section title="Tambahan">
         <Row icon="grid" title="Konektor MCP" detail={extra.connectors.length+' konektor'} onPress={()=>onPage('connectors')}/>
-        <Row icon="box" title="Skill" detail={extra.skills.length+' skill terpasang'} onPress={()=>onPage('skills')}/>
+        <Row icon="box" title="Skill" detail={extra.skills.length+' skill kustom terpasang'} onPress={()=>onPage('skills')}/>
+        <Row icon="lock" title="Integrasi bawaan (terkunci)" detail={BUILTIN_REFERENCES.length+' referensi terkurasi dari GitHub/MCP'} onPress={()=>onPage('catalog')}/>
          <Row icon="cpu" title="Prompt, reasoning, dan riset" detail={'Reasoning '+extra.brain.reasoning+' • riset '+extra.brain.research} onPress={()=>onPage('intelligence')}/>
         <Row icon="cpu" title="AI lokal & model" onPress={()=>onPage('models')}/>
         <Row icon="shield" title="Izin" onPress={()=>onPage('permissions')}/>
       </Section>
     </>}
     {page==='connectors'&&<>
+      <Section title="MCP bawaan • tidak dapat dihapus atau diubah">
+        <View style={{padding:14,gap:10}}>
+          <View style={[style.row,{gap:9}]}>
+            <Feather name="lock" color={C.accent} size={17}/>
+            <Text style={{color:C.text,fontSize:16,fontWeight:'700',flex:1}}>{BUILTIN_EXA_CONNECTOR.name}</Text>
+          </View>
+          <Text selectable style={tiny}>{BUILTIN_EXA_CONNECTOR.url}</Text>
+          <Text style={tiny}>Sumber pencarian internet bawaan. Mode anonim dapat dibatasi oleh Exa; belum berarti server tersambung sebelum diuji.</Text>
+          <Pressable disabled={connectorBusy} onPress={()=>void testConnector(BUILTIN_EXA_CONNECTOR)}
+            style={{backgroundColor:C.raised,borderRadius:12,padding:12,alignItems:'center'}}>
+            <Text style={{color:C.accent}}>{connectorBusy?'Memeriksa…':'Tes Exa MCP & lihat tool'}</Text>
+          </Pressable>
+          {(mcpTools[BUILTIN_EXA_CONNECTOR.id]||[]).map(t=><Text key={t.name} style={tiny}>• {t.name}</Text>)}
+        </View>
+      </Section>
       <Section title="Penemuan konektor">
         <Row icon="grid" title="Jelajahi konektor" detail="Temukan konektor yang ditambahkan ke aplikasi"
           right={<Switch value={extra.connectorDiscovery} onValueChange={v=>change({connectorDiscovery:v})}/>}/>
@@ -301,6 +318,13 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         onPress={()=>onPage('connectors')}/>
     </>}
     {page==='skills'&&<>
+      <Section title="Skill metodologi bawaan • terkunci">
+        {BUILTIN_REFERENCES.filter(x=>x.status==='instructions').map(item=>
+          <Row key={item.id} icon="lock" title={item.name} detail={item.summary+' • berlaku saat topik relevan'}
+            onPress={()=>onPage('catalog')}/>)}
+        <Row icon="book-open" title="Lihat katalog 14 sumber" detail="Semua sumber resmi dan kebutuhan runtime"
+          onPress={()=>onPage('catalog')}/>
+      </Section>
       <Text style={[tiny,{marginBottom:12}]}>
         Skill GitHub disimpan sebagai instruksi tertulis; bukan plugin APK dan tidak mengeksekusi kode repo. Tinjau isinya sebelum mengaktifkan.
       </Text>
@@ -335,6 +359,11 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
       <PrimaryButton title="Tambahkan dari repo GitHub" onPress={()=>setAddSkill(true)}/>
     </>}
     {page==='models'&&<>
+      <Section title="Referensi engine model eksternal • bukan unduhan HP">
+        <Row icon="lock" title="Kimi K3 in C (eksperimental)"
+          detail="Checkpoint sangat besar, tidak kompatibel dengan installer GGUF dalam aplikasi"
+          onPress={()=>onPage('catalog')}/>
+      </Section>
       <Section title="Provider cloud">
         <Row icon="settings" title="Pengaturan API provider" detail="Kunci tersimpan aman" onPress={onProvider}/>
         <TextInput style={[style.input,{margin:12}]} placeholder="Cari model" placeholderTextColor={C.subtle}
@@ -386,6 +415,24 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         <Text style={{color:C.accent}}>Kembali ke provider cloud</Text>
       </Pressable>}
       <Text style={tiny}>Model lokal dijalankan oleh llama.cpp (llama.rn), bukan server Ollama. Hanya GGUF yang cocok dengan engine dan memori HP yang tersedia. Unduh memerlukan internet; chat lokal setelah terpasang dapat offline.</Text>
+    </>}
+    {page==='catalog'&&<>
+      <Text style={[tiny,{marginBottom:14,lineHeight:20}]}>
+        Katalog sumber yang dikurasi dan ditanam dalam kode APK. Entri dikunci dari edit, toggle dan uninstall; hanya kemampuan yang memang tersedia yang dijalankan. Repository eksternal tidak diunduh/diinstal otomatis.
+      </Text>
+      {(['mcp','skill','agent','media','model','automation'] as const).map(category=>
+        <Section key={category} title={category==='mcp'?'MCP dan pencarian':
+          category==='skill'?'Skill metodologi':category==='agent'?'Agent eksternal':
+          category==='media'?'Media & generatif':category==='model'?'Model/engine':'Automasi perangkat'}>
+          {BUILTIN_REFERENCES.filter(x=>x.category===category).map(item=>
+            <Row key={item.id} icon="lock" title={item.name}
+              detail={item.summary+'\n'+(item.status==='mcp-ready'?'MCP siap diuji':
+                item.status==='instructions'?'Panduan internal aktif menurut konteks':
+                item.status==='server-needed'?'Butuh worker/server terpisah':'Referensi saja, bukan runtime APK')}
+              onPress={()=>Alert.alert(item.name,item.summary+'\n\nPersyaratan: '+item.requirements,
+                [{text:'Tutup',style:'cancel'},{text:'Buka GitHub',onPress:()=>void Linking.openURL('https://github.com/'+item.repo)}])}
+              right={<Feather name="lock" color={C.subtle} size={16}/>}/>)}
+        </Section>)}
     </>}
     {page==='memory'&&<>
       <Text style={[tiny,{marginBottom:10}]}>Catatan tersimpan lokal, hanya digunakan ketika memori diaktifkan.</Text>
