@@ -29,8 +29,8 @@ const CL={bg:'#FBFAFC',card:'#FFFFFF',text:'#191A20',muted:'#8C8C95',border:'#E3
   accent:'#6955DA',tint:'#F0EDFF',danger:'#D4474F'};
 const font={color:CL.text,fontSize:16} as const;
 const note={color:CL.muted,fontSize:13,lineHeight:20} as const;
-function Header({title,onBack,onDone}:{
-  title:string;onBack():void;onDone?:()=>void
+function Header({title,onBack,onDone,onSettings}:{
+  title:string;onBack():void;onDone?:()=>void;onSettings?:()=>void
 }){
   return <View style={{height:66,paddingHorizontal:18,flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
     <Pressable accessibilityRole="button" accessibilityLabel="Kembali" onPress={onBack}
@@ -38,9 +38,10 @@ function Header({title,onBack,onDone}:{
       <Feather name="arrow-left" size={25} color={CL.text}/>
     </Pressable>
     <Text style={{color:CL.text,fontSize:22,fontWeight:'600'}}>{title}</Text>
-    {onDone?<Pressable accessibilityRole="button" accessibilityLabel="Simpan pengaturan"
-      onPress={onDone} style={{backgroundColor:CL.card,width:44,height:44,borderRadius:24,alignItems:'center',justifyContent:'center'}}>
-      <Feather name="check" size={26} color={CL.accent}/>
+    {onDone||onSettings?<Pressable accessibilityRole="button"
+      accessibilityLabel={onSettings?'Buka pengaturan':'Simpan pengaturan'}
+      onPress={onSettings||onDone} style={{backgroundColor:CL.card,width:44,height:44,borderRadius:24,alignItems:'center',justifyContent:'center'}}>
+      <Feather name={onSettings?"settings":"check"} size={25} color={CL.accent}/>
     </Pressable>:<View style={{width:44}}/>}
   </View>;
 }
@@ -154,6 +155,7 @@ export function PersonalSettingsScreen({page,profile,extra,onProfile,onExtra,onB
     <Header title={page==='profile'?'Profil':page==='general'?'Umum':
       page==='customize'?'Sesuaikan':page==='personality'?'Kepribadian':'Foto referensi'}
       onBack={onBack}
+      onSettings={page==='profile'?()=>onNavigate('settings'):undefined}
       onDone={page==='personality'?()=>{
         change({personalityInstructions:customTone.trim().slice(0,4000)});
         onBack();
@@ -208,6 +210,9 @@ export function PersonalSettingsScreen({page,profile,extra,onProfile,onExtra,onB
           <Row title="Bahasa aplikasi" detail={profile.appLanguage==='id'?'Indonesia':'English'}
             onPress={()=>setPicker('language')} last/>
         </Group>
+        <Text style={{...note,marginTop:-10,marginBottom:18,marginLeft:13}}>
+          Pilihan ini mengatur bahasa respons AI. Terjemahan seluruh antarmuka aplikasi masih bertahap.
+        </Text>
         <Group>
           <Row icon="image" title="Foto referensi" detail={profile.referencePhotoUris.length+' tersimpan'}
             onPress={()=>onNavigate('references')} last/>
