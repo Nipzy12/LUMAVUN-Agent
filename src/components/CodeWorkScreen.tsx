@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { Entry, Project } from '../types';
 import { ActionIcon, C, Logo, style } from '../ui';
+import { AttachmentChips } from './AttachmentSheet';
+import type { PendingAttachment } from '../attachments';
 
 type Props = {
   mode: 'chat' | 'work';
@@ -16,14 +18,22 @@ type Props = {
   onStop(): void;
   onMenu(): void;
   onWorkspace(): void;
+  onAttachments(): void;
+  attachments: PendingAttachment[];
+  onRemoveAttachment(id: string): void;
   onBackToChat(): void;
 };
 
 export function CodeWorkScreen({
   mode, onModeChange, entries, project, busy, draft, onDraft,
-  onSend, onStop, onMenu, onWorkspace, onBackToChat
+  onSend, onStop, onMenu, onWorkspace, onBackToChat, onAttachments, attachments, onRemoveAttachment
 }: Props) {
   const toolsUsed = entries.filter(e => e.role === 'tool').length;
+  const scroll = useRef<ScrollView>(null);
+  useEffect(()=>{
+    const timer=setTimeout(()=>scroll.current?.scrollToEnd({animated:true}),100);
+    return ()=>clearTimeout(timer);
+  },[entries.length,busy]);
   return <View style={{flex:1,backgroundColor:C.bg}}>
     <View style={[style.row,{height:65,paddingHorizontal:10}]}>
       <ActionIcon name="menu" onPress={onMenu}/>
@@ -55,7 +65,8 @@ export function CodeWorkScreen({
       </View>
       <Feather name="chevron-right" size={18} color={C.muted}/>
     </Pressable>
-    <ScrollView style={{flex:1}} keyboardShouldPersistTaps="handled"
+    <ScrollView ref={scroll} style={{flex:1}} keyboardShouldPersistTaps="handled"
+      onContentSizeChange={()=>{if(entries.length)scroll.current?.scrollToEnd({animated:false})}}
       contentContainerStyle={{paddingHorizontal:18,paddingTop:20,paddingBottom:26,flexGrow:1}}>
       {entries.length === 0 ? <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:14}}>
         <Logo size={72}/>
@@ -113,23 +124,24 @@ export function CodeWorkScreen({
       </View>}
     </ScrollView>
     <View style={{paddingHorizontal:13,paddingBottom:8,paddingTop:8}}>
+      <AttachmentChips attachments={attachments} onRemove={onRemoveAttachment}/>
       <View style={[style.row,{
         backgroundColor:C.surface,borderColor:C.border,borderWidth:1,borderRadius:24,
         paddingHorizontal:10,paddingVertical:7,gap:8
       }]}>
-        <ActionIcon name="plus" onPress={onWorkspace}/>
+        <ActionIcon name="plus" onPress={onAttachments}/>
         <TextInput style={{color:C.text,flex:1,minHeight:42,maxHeight:120,fontSize:15}}
           multiline value={draft} onChangeText={onDraft} editable={!busy}
           placeholder={mode==='work'?'Work dengan LUMAVUN…':'Chat dengan LUMAVUN…'}
           placeholderTextColor={C.subtle}/>
         <Pressable accessibilityRole="button" accessibilityLabel={busy?'Hentikan agent':'Kirim instruksi'}
-          onPress={busy?onStop:onSend} disabled={!busy&&!draft.trim()}
+          onPress={busy?onStop:onSend} disabled={!busy&&!draft.trim()&&!attachments.length}
           style={{height:42,width:42,borderRadius:21,alignItems:'center',justifyContent:'center',
-            backgroundColor:busy?C.raised:C.accent,opacity:busy||draft.trim()?1:.4}}>
+            backgroundColor:busy?C.raised:C.accent,opacity:busy||draft.trim()||attachments.length?1:.4}}>
           <Feather name={busy?'square':'arrow-up'} color={busy?C.text:C.bg} size={18}/>
         </Pressable>
       </View>
-      <Pressable onPress={onBackToChat} style={{alignItems:'center',paddingTop:9,paddingBottom:2}}>
+      <Pressable onPress={onBackToChat} style={{alignItems:'center',paddingTop:3,paddingBottom:2}}>
         <Text style={{color:C.muted,fontSize:12}}>Kembali ke chat umum</Text>
       </Pressable>
     </View>
