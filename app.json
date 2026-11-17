@@ -15,11 +15,20 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0D1020"
-      }
+      },
+      "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
       "expo-secure-store",
       "expo-document-picker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "LUMAVUN menggunakan foto yang kamu pilih untuk dilampirkan dalam chat.",
+          "cameraPermission": "LUMAVUN menggunakan kamera hanya saat kamu memotret untuk chat.",
+          "microphonePermission": false
+        }
+      ],
       [
         "llama.rn",
         {
