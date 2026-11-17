@@ -5,11 +5,12 @@ import { Feather } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 import * as Calendar from 'expo-calendar';
+import * as DocumentPicker from 'expo-document-picker';
 import type { ExtraState, CapabilityKey, Connector, Skill } from '../featureState';
 import { DEFAULT_CAPABILITIES, validMcpUrl, usageSummary } from '../featureState';
 import { FEATURED_SKILLS, getSkill, type SkillCandidate } from '../githubSkills';
 import { clearMcpSession, listMcpTools, type MCPTool } from '../mcpClient';
-import { GGUF_CATALOG, installedModelIds, bytesOnDisk, cancelModelDownload, downloadModel, removeModel, unloadModel } from '../localAI';
+import { GGUF_CATALOG, installedModelIds, bytesOnDisk, cancelModelDownload, downloadModel, removeModel, unloadModel, importCustomGGUF } from '../localAI';
 import { BUILTIN_REFERENCES, BUILTIN_EXA_CONNECTOR } from '../builtinRegistry';
 import type { ModelInfo } from '../types';
 import type { MemoryRecord } from '../memoryPolicy';
@@ -67,6 +68,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  const [progress,setProgress]=useState(0);
  const [installed,setInstalled]=useState<string[]>([]);
  const [modelSearch,setModelSearch]=useState('');
+ const [modelFilter,setModelFilter]=useState<'all'|'downloaded'|'uncensored'|'custom'>('all');
  const [modelLimit,setModelLimit]=useState(120);
  const [note,setNote]=useState('');
  const [locStatus,setLocStatus]=useState('Belum diperiksa');
@@ -125,6 +127,20 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    }catch(err){Alert.alert('Install gagal',String(err instanceof Error?err.message:err));}
    finally{setSkillBusy('');}
  };
+ const importModel=async()=>{
+    setModelBusy('import');
+    try{
+      const picked=await DocumentPicker.getDocumentAsync({
+        type:'*/*',copyToCacheDirectory:true,multiple:false
+      });
+      if(!picked.canceled){
+        const model=await importCustomGGUF(picked.assets[0].uri,picked.assets[0].name);
+        setInstalled(installedModelIds());
+        Alert.alert('GGUF terimpor',model.name+'\nKompatibilitas perangkat belum dijamin.');
+      }
+    }catch(e){Alert.alert('Import gagal',String(e instanceof Error?e.message:e))}
+    finally{setModelBusy('')}
+  };
  const download=async(model:typeof GGUF_CATALOG[number])=>{
    setModelBusy(model.id);setProgress(0);
    try{await downloadModel(model,setProgress);setInstalled(installedModelIds());Alert.alert('Selesai','Model GGUF disimpan di perangkat.');}
@@ -425,10 +441,37 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
             detail="Tampilkan 120 model berikutnya dari katalog provider"
             onPress={()=>setModelLimit(n=>n+120)}/>}
       </Section>
-      <Section title="Model GGUF yang bisa disimpan ke HP">
-        {GGUF_CATALOG.map(m=><View key={m.id} style={{padding:14,gap:9,borderBottomWidth:1,borderColor:C.border}}>
+      <View style={[style.row,{gap:8,marginBottom:15,flexWrap:'wrap'}]}>
+        {([
+          {id:'all',label:'Semua'},
+          {id:'downloaded',label:'Diunduh'},
+          {id:'uncensored',label:'Uncensored'},
+          {id:'custom',label:'Custom'}
+        ] as const).map(filter=><Pressable key={filter.id}
+          onPress={()=>setModelFilter(filter.id)}
+          style={{paddingHorizontal:13,paddingVertical:11,borderRadius:12,
+            backgroundColor:modelFilter===filter.id?C.accentDeep:C.raised}}>
+          <Text style={{color:C.text}}>{filter.label}</Text>
+        </Pressable>)}
+        <Pressable onPress={()=>void importModel()} disabled={!!modelBusy}
+          style={{paddingHorizontal:15,paddingVertical:11,borderRadius:12,backgroundColor:C.accentDeep}}>
+          <Text style={{color:C.text}}>+ Import GGUF</Text>
+        </Pressable>
+      </View>
+      <Section title="Model GGUF lokal • ukuran dan RAM minimum perkiraan">
+        {GGUF_CATALOG.filter(m=>{
+          const match=modelFilter==='all'||(modelFilter==='downloaded'&&installed.includes(m.id))||
+            (modelFilter==='uncensored'&&m.category==='uncensored')||
+            (modelFilter==='custom'&&m.custom);
+          return match&&(m.id+' '+m.name+' '+m.family).toLowerCase().includes(modelSearch.toLowerCase());
+        }).map(m=><View key={m.id} style={{padding:14,gap:9,borderBottomWidth:1,borderColor:C.border}}>
           <Text style={{color:C.text,fontSize:15,fontWeight:'700'}}>{m.name}</Text>
           <Text style={tiny}>{m.description}</Text>
+          <Text style={{color:C.gold,fontSize:12}}>{m.category==='uncensored'?'UNCENSORED • ':''}
+            {m.supported===false?'REFERENSI • KOMPATIBILITAS BELUM DIVERIFIKASI':
+              m.custom?'IMPORT CUSTOM':'GGUF LOCAL'}
+            {m.minRamGb?' • RAM min ~'+m.minRamGb+' GB':''}
+          </Text>
           <Text style={{color:C.accent,fontSize:12}}>
             {Math.round(m.sizeBytes/1000000)} MB • {m.family} • {installed.includes(m.id)?
               'Terpasang ('+Math.round(bytesOnDisk(m.id)/1000000)+' MB)':'Belum terpasang'}
@@ -450,9 +493,14 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
                 style={{padding:12,backgroundColor:C.raised,borderRadius:12}}>
                 <Feather name="trash-2" color={C.danger} size={18}/>
               </Pressable>
-            </>:<Pressable onPress={()=>void download(m)}
-              style={{backgroundColor:C.accentDeep,padding:12,borderRadius:12,flex:1,alignItems:'center'}}>
-              <Text style={{color:C.text}}>Unduh ke perangkat</Text>
+            </>:m.supported===false?<View style={{padding:12,backgroundColor:C.raised,borderRadius:12,flex:1}}>
+              <Text style={{color:C.muted,textAlign:'center'}}>Belum didukung oleh runtime HP</Text>
+            </View>:<Pressable onPress={()=>Alert.alert('Unduh '+m.name,
+              'Ukuran sekitar '+(m.sizeBytes/1e9).toFixed(2)+' GB. Pastikan ruang dan RAM cukup.',[
+                {text:'Batal',style:'cancel'},
+                {text:'Unduh',onPress:()=>void download(m)}
+              ])} style={{backgroundColor:C.accentDeep,padding:12,borderRadius:12,flex:1,alignItems:'center'}}>
+              <Text style={{color:C.text}}>Unduh ('+(m.sizeBytes/1e9).toFixed(2)+' GB)</Text>
             </Pressable>}
           </View>}
         </View>)}
@@ -461,7 +509,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
          onPress={()=>{void unloadModel();change({localModelId:''})}}>
         <Text style={{color:C.accent}}>Kembali ke provider cloud</Text>
       </Pressable>}
-      <Text style={tiny}>Model lokal dijalankan oleh llama.cpp (llama.rn), bukan server Ollama. Hanya GGUF yang cocok dengan engine dan memori HP yang tersedia. Unduh memerlukan internet; chat lokal setelah terpasang dapat offline.</Text>
+      <Text style={tiny}>GPT-OSS 120B melalui provider Cloudflare Workers AI, bukan unduhan HP. Model uncensored adalah GGUF pihak ketiga, bukan fitur yang mengubah aturan aplikasi. Model lokal dijalankan oleh llama.cpp (llama.rn), bukan server Ollama. Hanya GGUF yang cocok dengan engine dan memori HP yang tersedia. Unduh memerlukan internet; chat lokal setelah terpasang dapat offline.</Text>
     </>}
     {page==='catalog'&&<>
       <Text style={[tiny,{marginBottom:14,lineHeight:20}]}>
