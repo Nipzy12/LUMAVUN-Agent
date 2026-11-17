@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, type ScrollViewInstance, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { Entry, Project } from '../types';
 import { ActionIcon, C, Logo, style } from '../ui';
@@ -29,7 +29,7 @@ export function CodeWorkScreen({
   onSend, onStop, onMenu, onWorkspace, onBackToChat, onAttachments, attachments, onRemoveAttachment
 }: Props) {
   const toolsUsed = entries.filter(e => e.role === 'tool').length;
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   useEffect(()=>{
     const timer=setTimeout(()=>scroll.current?.scrollToEnd({animated:true}),100);
     return ()=>clearTimeout(timer);
