@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform,
   Pressable, ScrollView, StatusBar, Text, TextInput, Vibration, View
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
-import { runConnectedChat } from './src/connectedChat';
+import { runResearch } from './src/research';
+import { buildBrainPrompt } from './src/intelligence';
+import { completeLocalWork } from './src/localWork';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { fromImage, fromDocument, buildAttachmentInput, type PendingAttachment } from './src/attachments';
+import { AttachmentSheet, AttachmentChips } from './src/components/AttachmentSheet';
 import * as SecureStore from 'expo-secure-store';
 import { HubScreen, type HubPage } from './src/components/HubScreen';
 import { ProjectDetailScreen } from './src/components/ProjectDetailScreen';
@@ -51,6 +57,9 @@ function Main() {
   const [key, setKey] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [draft, setDraft] = useState('');
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [modeDraft, setModeDraft] = useState<'chat' | 'code'>('chat');
   const [mainPage, setMainPage] = useState<'chat' | 'projects' | 'code' | 'artifacts'>('chat');
   const [codeViewMode, setCodeViewMode] = useState<'chat' | 'work'>('work');
@@ -84,6 +93,12 @@ function Main() {
   }, []);
 
   useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow',()=>setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide',()=>setKeyboardVisible(false));
+    return ()=>{show.remove();hide.remove()};
+  },[]);
+
+  useEffect(() => {
     if (!ready) return;
     saveQueue.current = saveQueue.current
       .catch(() => {})
@@ -114,6 +129,7 @@ function Main() {
     setState(s => ({ ...s, chats: [next, ...s.chats], selectedChatId: next.id }));
     setModeDraft(nextMode);
     setDraft('');
+    setAttachments([]);
     setSidebarOpen(false);
   }
 
@@ -125,6 +141,7 @@ function Main() {
     setHubPage(null);
     setAccountPage(null);
     setMainPage(page);
+    setAttachments([]);
     if (page === 'chat' || page === 'code') {
       const modeForPage = page === 'code' ? 'code' : 'chat';
       setModeDraft(modeForPage);
@@ -524,9 +541,9 @@ function Main() {
     <ActivityIndicator color={C.accent} size="large" />
   </SafeAreaView>;
 
-  return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={keyboardVisible?['top']:['top','bottom']}>
     <StatusBar barStyle="light-content" />
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+    <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1 }}>
 
 
       {hubPage ? <HubScreen
@@ -597,8 +614,9 @@ function Main() {
           </View>
           <ChatView entries={current?.mode==='chat'?current.entries:[]}
             mode="chat" busy={busy} name={state.profile.name}
-            largeText={state.profile.largeText} onSuggestion={setDraft} onSaveCode={saveChatArtifact}/>
-          <View style={{paddingHorizontal:13,paddingVertical:8}}>
+            largeText={state.profile.largeText} keyboardVisible={keyboardVisible} onSuggestion={setDraft} onSaveCode={saveChatArtifact}/>
+          <View style={{paddingHorizontal:13,paddingVertical:keyboardVisible?4:8}}>
+             <AttachmentChips attachments={attachments} onRemove={itemId=>setAttachments(v=>v.filter(a=>a.id!==itemId))}/>
             <View style={{backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:23,paddingHorizontal:9,paddingTop:5,paddingBottom:7}}>
               <TextInput value={draft} onChangeText={setDraft}
                 accessibilityLabel="Pesan untuk LUMAVUN"
@@ -607,7 +625,7 @@ function Main() {
                 style={{color:C.text,fontSize:state.profile.largeText?18:16,minHeight:50,maxHeight:135,paddingHorizontal:10,paddingVertical:12}}
                 textAlignVertical="top"/>
               <View style={[style.row,{gap:4}]}>
-                <ActionIcon name="plus" onPress={()=>setWorkspaceOpen(true)} color={C.muted} size={21}/>
+                <ActionIcon name="plus" onPress={()=>{Keyboard.dismiss();setAttachmentSheetOpen(true)}} color={C.muted} size={21}/>
                 <Pressable onPress={()=>setModelsOpen(true)}
                   style={[style.row,{backgroundColor:C.raised,borderRadius:19,paddingHorizontal:13,paddingVertical:10,gap:6,maxWidth:218}]}>
                   <Feather name="cpu" size={14} color={C.accent}/>
@@ -620,9 +638,9 @@ function Main() {
                 </Pressable>
                 <View style={{flex:1}}/>
                 <Pressable onPress={busy?stop:()=>void sendMessage()}
-                  disabled={!busy&&!draft.trim()}
+                  disabled={!busy&&!draft.trim()&&!attachments.length}
                   style={{height:40,width:40,borderRadius:20,backgroundColor:busy?C.raised:C.accent,
-                    opacity:busy||draft.trim()?1:.4,alignItems:'center',justifyContent:'center'}}>
+                    opacity:busy||draft.trim()||attachments.length?1:.4,alignItems:'center',justifyContent:'center'}}>
                   <Feather name={busy?'square':'arrow-up'} size={18} color={busy?C.text:C.bg}/>
                 </Pressable>
               </View>
@@ -654,7 +672,7 @@ function Main() {
           style={{paddingHorizontal:16,paddingVertical:7,backgroundColor:C.surface}}>
           <Text style={{color:C.gold,fontSize:12}} numberOfLines={3}>{notice} ×</Text>
         </Pressable>}
-        {!state.profile.hideTabs && <View style={[style.row,{
+        {!state.profile.hideTabs && !keyboardVisible && <View style={[style.row,{
           backgroundColor:C.surface,borderRadius:25,marginHorizontal:12,marginBottom:8,
           padding:4,borderColor:C.border,borderWidth:1
         }]}>
