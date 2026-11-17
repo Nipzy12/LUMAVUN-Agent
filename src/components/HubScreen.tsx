@@ -8,7 +8,7 @@ import * as Calendar from 'expo-calendar';
 import type { ExtraState, CapabilityKey, Connector, Skill } from '../featureState';
 import { DEFAULT_CAPABILITIES, validMcpUrl, usageSummary } from '../featureState';
 import { FEATURED_SKILLS, getSkill, type SkillCandidate } from '../githubSkills';
-import { listMcpTools, type MCPTool } from '../mcpClient';
+import { clearMcpSession, listMcpTools, type MCPTool } from '../mcpClient';
 import { GGUF_CATALOG, installedModelIds, bytesOnDisk, cancelModelDownload, downloadModel, removeModel, unloadModel } from '../localAI';
 import { BUILTIN_REFERENCES, BUILTIN_EXA_CONNECTOR } from '../builtinRegistry';
 import type { ModelInfo } from '../types';
@@ -50,6 +50,8 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  const [connectorUrl,setConnectorUrl]=useState('');
  const [connectorToken,setConnectorToken]=useState('');
  const [connectorBusy,setConnectorBusy]=useState(false);
+ const [exaApiKey,setExaApiKey]=useState('');
+ const [exaKeySaved,setExaKeySaved]=useState(false);
  const [mcpTools,setMcpTools]=useState<Record<string,MCPTool[]>>({});
  const [addSkill,setAddSkill]=useState(false);
  const [skillRepo,setSkillRepo]=useState('');
@@ -70,6 +72,10 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  useEffect(()=>{if(page==='permissions'){
    void Location.getForegroundPermissionsAsync().then(r=>setLocStatus(r.granted?'Saat digunakan':'Tidak diizinkan'));
    void Calendar.getCalendarPermissionsAsync().then(r=>setCalendarStatus(r.granted?'Diizinkan':'Tidak diizinkan'));
+ }},[page]);
+ useEffect(()=>{if(page==='connectors'){
+   void SecureStore.getItemAsync('lumavun.mcp.'+BUILTIN_EXA_CONNECTOR.id)
+     .then(v=>setExaKeySaved(!!v)).catch(()=>setExaKeySaved(false));
  }},[page]);
  const change=(patch:Partial<ExtraState>)=>onChange({...extra,...patch});
  const toggle=(key:CapabilityKey,value:boolean)=>{
@@ -190,6 +196,31 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
             <Text style={{color:C.text,fontSize:16,fontWeight:'700',flex:1}}>{BUILTIN_EXA_CONNECTOR.name}</Text>
           </View>
           <Text selectable style={tiny}>{BUILTIN_EXA_CONNECTOR.url}</Text>
+          <View style={[style.row,{gap:9,justifyContent:'space-between'}]}>
+            <Text style={{color:C.text,flex:1}}>Gunakan Exa bawaan</Text>
+            <Switch value={extra.builtinExaEnabled}
+              onValueChange={value=>change({builtinExaEnabled:value})}/>
+          </View>
+          <Text style={tiny}>API key Exa (opsional) • {exaKeySaved?'tersimpan aman':'mode anonim/rate limit'}</Text>
+          <TextInput style={style.input} secureTextEntry autoCapitalize="none" autoCorrect={false}
+            placeholder="Masukkan API key baru" placeholderTextColor={C.subtle}
+            value={exaApiKey} onChangeText={setExaApiKey}/>
+          <View style={[style.row,{gap:10}]}>
+            <Pressable disabled={!exaApiKey.trim()} onPress={()=>{
+              void SecureStore.setItemAsync('lumavun.mcp.'+BUILTIN_EXA_CONNECTOR.id,exaApiKey.trim())
+                .then(()=>{clearMcpSession(BUILTIN_EXA_CONNECTOR.id);setExaKeySaved(true);setExaApiKey('');Alert.alert('Exa','API key tersimpan di SecureStore.')})
+                .catch(e=>Alert.alert('Gagal menyimpan',String(e)));
+            }} style={{backgroundColor:C.raised,borderRadius:12,padding:12,flex:1,opacity:exaApiKey.trim()?1:0.45}}>
+              <Text style={{color:C.accent,textAlign:'center'}}>Simpan API key</Text>
+            </Pressable>
+            <Pressable onPress={()=>{
+              void SecureStore.deleteItemAsync('lumavun.mcp.'+BUILTIN_EXA_CONNECTOR.id)
+                .then(()=>{clearMcpSession(BUILTIN_EXA_CONNECTOR.id);setExaKeySaved(false);setExaApiKey('')})
+                .catch(e=>Alert.alert('Gagal menghapus',String(e)));
+            }} style={{backgroundColor:C.raised,borderRadius:12,padding:12}}>
+              <Text style={{color:C.danger}}>Hapus</Text>
+            </Pressable>
+          </View>
           <Text style={tiny}>Sumber pencarian internet bawaan. Mode anonim dapat dibatasi oleh Exa; belum berarti server tersambung sebelum diuji.</Text>
           <Pressable disabled={connectorBusy} onPress={()=>void testConnector(BUILTIN_EXA_CONNECTOR)}
             style={{backgroundColor:C.raised,borderRadius:12,padding:12,alignItems:'center'}}>
@@ -318,7 +349,12 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         onPress={()=>onPage('connectors')}/>
     </>}
     {page==='skills'&&<>
-      <Section title="Skill metodologi bawaan • terkunci">
+      <Section title="Skill metodologi bawaan • tidak dapat dihapus">
+        <View style={[style.row,{padding:12,gap:8}]}>
+          <Text style={{color:C.text,flex:1}}>Gunakan panduan bawaan saat topik relevan</Text>
+          <Switch value={extra.builtinSkillsEnabled}
+            onValueChange={value=>change({builtinSkillsEnabled:value})}/>
+        </View>
         {BUILTIN_REFERENCES.filter(x=>x.status==='instructions').map(item=>
           <Row key={item.id} icon="lock" title={item.name} detail={item.summary+' • berlaku saat topik relevan'}
             onPress={()=>onPage('catalog')}/>)}
