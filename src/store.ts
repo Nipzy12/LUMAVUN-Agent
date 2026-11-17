@@ -2,12 +2,28 @@ import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
 import type { Conversation, Project, Settings, UserArtifact } from './types';
 import { DEFAULT_EXTRA, withExtra, type ExtraState } from './featureState';
+import { normalizePreferences, type PersonalityId, type PreferenceLevel, type AppLanguage } from './personalization';
 
 const KEY = 'lumavun.local.v1';
 const SECRET = 'lumavun.provider.secret';
 
 export type UserPreferences = {
   name: string;
+  fullName: string;
+  personalInstructions: string;
+  personalityInstructions: string;
+  personality: PersonalityId;
+  warmth: PreferenceLevel;
+  enthusiasm: PreferenceLevel;
+  formatting: PreferenceLevel;
+  emoji: PreferenceLevel;
+  appLanguage: AppLanguage;
+  quickAnswers: boolean;
+  homeSuggestions: boolean;
+  librarySearch: boolean;
+  visualAnswers: boolean;
+  referencePhotoUris: string[];
+  petName: string;
   haptics: boolean;
   hideTabs: boolean;
   largeText: boolean;
@@ -15,6 +31,21 @@ export type UserPreferences = {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   name: 'Pengguna',
+  fullName: '',
+  personalInstructions: '',
+  personalityInstructions: '',
+  personality: 'default',
+  warmth: 1,
+  enthusiasm: 1,
+  formatting: 1,
+  emoji: 1,
+  appLanguage: 'id',
+  quickAnswers: false,
+  homeSuggestions: true,
+  librarySearch: false,
+  visualAnswers: true,
+  referencePhotoUris: [],
+  petName: '',
   haptics: true,
   hideTabs: false,
   largeText: false
@@ -56,7 +87,7 @@ export async function loadState(): Promise<LocalState> {
       ...INITIAL_STATE,
       ...obj,
       settings: { ...INITIAL_STATE.settings, ...(obj.settings || {}) },
-      profile: { ...DEFAULT_PREFERENCES, ...(obj.profile || {}) },
+      profile: normalizePreferences({ ...DEFAULT_PREFERENCES, ...(obj.profile || {}) }),
       extra: withExtra(obj.extra || {}),
       projects: Array.isArray(obj.projects) ? obj.projects : [],
       artifacts: Array.isArray(obj.artifacts) ? obj.artifacts : [],
