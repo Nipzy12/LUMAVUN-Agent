@@ -14,7 +14,7 @@ import type { ModelInfo } from '../types';
 import { id } from '../paths';
 import { ActionIcon, C, PrimaryButton, Sheet, style } from '../ui';
 
-export type HubPage='capabilities'|'connectors'|'permissions'|'usage'|'skills'|'models'|'memory';
+export type HubPage='capabilities'|'connectors'|'permissions'|'usage'|'skills'|'models'|'memory'|'intelligence';
 type Props={
  page:HubPage; extra:ExtraState;
  cloudModels:ModelInfo[]; selectedCloud:string;
@@ -124,7 +124,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
    finally{setModelBusy('');}
  };
  const pageTitle:Record<HubPage,string>={capabilities:'Kemampuan',connectors:'Konektor',permissions:'Izin',
-   usage:'Penggunaan dan batasan',skills:'Skill GitHub',models:'Model AI',memory:'File memori'};
+   usage:'Penggunaan dan batasan',skills:'Skill GitHub',models:'Model AI',memory:'File memori',intelligence:'Otak AI LUMAVUN'};
  const switchRow=(key:CapabilityKey,title:string,detail:string,disabled=false)=>
    <Row icon={key==='webSearch'?'globe':key==='chatMemory'?'bookmark':key==='codeTools'?'code':'sliders'}
      title={title} detail={detail}
@@ -171,6 +171,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
       <Section title="Tambahan">
         <Row icon="grid" title="Konektor MCP" detail={extra.connectors.length+' konektor'} onPress={()=>onPage('connectors')}/>
         <Row icon="box" title="Skill" detail={extra.skills.length+' skill terpasang'} onPress={()=>onPage('skills')}/>
+         <Row icon="cpu" title="Prompt, reasoning, dan riset" detail={'Reasoning '+extra.brain.reasoning+' • riset '+extra.brain.research} onPress={()=>onPage('intelligence')}/>
         <Row icon="cpu" title="AI lokal & model" onPress={()=>onPage('models')}/>
         <Row icon="shield" title="Izin" onPress={()=>onPage('permissions')}/>
       </Section>
@@ -256,6 +257,44 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         </Pressable>
       </>;
     })()}
+
+    {page==='intelligence'&&<>
+      <Text style={[tiny,{marginBottom:14,lineHeight:20}]}>
+        Pengaturan ini mengarahkan instruksi AI. Tingkat reasoning tidak mengganti model maupun menampilkan proses berpikir internal.
+      </Text>
+      <Section title="Reasoning">
+        {([
+          {id:'fast',title:'Cepat',detail:'Jawaban langsung dan ringkas'},
+          {id:'balanced',title:'Seimbang',detail:'Periksa asumsi dan alasan penting'},
+          {id:'deep',title:'Mendalam',detail:'Verifikasi lebih cermat pada tugas kompleks'}
+        ] as const).map(option=><Row key={option.id}
+          icon={extra.brain.reasoning===option.id?'check-circle':'circle'}
+          title={option.title} detail={option.detail}
+          onPress={()=>change({brain:{...extra.brain,reasoning:option.id}})}/>)}
+      </Section>
+      <Section title="Riset internet">
+        {([
+          {id:'off',title:'Nonaktif',detail:'Tanpa konektor riset'},
+          {id:'web',title:'Pencarian cepat',detail:'Cari sumber dengan MCP search terhubung'},
+          {id:'deep',title:'Deep Research',detail:'Pencarian bertahap, validasi sumber, dan sintesis bersitasi'}
+        ] as const).map(option=><Row key={option.id}
+          icon={extra.brain.research===option.id?'check-circle':'circle'}
+          title={option.title} detail={option.detail}
+          onPress={()=>change({brain:{...extra.brain,research:option.id}})}/>)}
+      </Section>
+      <Section title="Prompt kustom">
+        <Text style={[tiny,{paddingHorizontal:14,paddingTop:12}]}>Instruksi untuk semua Chat dan Work, maks. 4.000 karakter. Tidak mengesampingkan izin tool.</Text>
+        <TextInput multiline maxLength={4000} textAlignVertical="top"
+          value={extra.brain.customPrompt} onChangeText={v=>change({brain:{...extra.brain,customPrompt:v}})}
+          placeholder="Misal: Jawab dalam bahasa Indonesia, gunakan contoh TypeScript."
+          placeholderTextColor={C.subtle}
+          style={[style.input,{minHeight:120,margin:13,maxHeight:230}]}/>
+      </Section>
+      <Row icon="book-open" title="Skill terpasang" detail={extra.skills.filter(s=>s.enabled).length+' skill aktif'}
+        onPress={()=>onPage('skills')}/>
+      <Row icon="server" title="Hubungkan pencarian MCP" detail="Deep Research membutuhkan tool web nyata"
+        onPress={()=>onPage('connectors')}/>
+    </>}
     {page==='skills'&&<>
       <Text style={[tiny,{marginBottom:12}]}>
         Skill GitHub disimpan sebagai instruksi tertulis; bukan plugin APK dan tidak mengeksekusi kode repo. Tinjau isinya sebelum mengaktifkan.
