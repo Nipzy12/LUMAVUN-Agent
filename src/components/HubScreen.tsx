@@ -57,6 +57,7 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
  const [skillRepo,setSkillRepo]=useState('');
  const [skillPath,setSkillPath]=useState('skills/pdf/SKILL.md');
  const [skillBusy,setSkillBusy]=useState('');
+ const [skillSearch,setSkillSearch]=useState('');
  const [modelBusy,setModelBusy]=useState('');
  const [progress,setProgress]=useState(0);
  const [installed,setInstalled]=useState<string[]>([]);
@@ -387,7 +388,12 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         </View>)}
       </Section>
       <Section title="Pilihan dari GitHub">
-        {FEATURED_SKILLS.map(candidate=><Row key={candidate.repo+candidate.path} icon="github" title={candidate.name}
+        <TextInput value={skillSearch} onChangeText={setSkillSearch}
+          placeholder="Cari Trader, Replica, PDF, WebSearch…" placeholderTextColor={C.subtle}
+          style={[style.input,{margin:12}]}/>
+        {FEATURED_SKILLS.filter(candidate=>
+          (candidate.name+' '+candidate.description+' '+candidate.repo).toLowerCase().includes(skillSearch.toLowerCase())
+        ).map(candidate=><Row key={candidate.repo+candidate.path} icon="github" title={candidate.name}
           detail={candidate.description+' • '+candidate.repo}
           onPress={()=>void installSkill(candidate)}
           right={skillBusy===candidate.name?<ActivityIndicator color={C.accent}/>:<Feather name="download" color={C.accent} size={20}/>}/>)}
@@ -466,7 +472,11 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
                 item.status==='instructions'?'Panduan internal aktif menurut konteks':
                 item.status==='server-needed'?'Butuh worker/server terpisah':'Referensi saja, bukan runtime APK')}
               onPress={()=>Alert.alert(item.name,item.summary+'\n\nPersyaratan: '+item.requirements,
-                [{text:'Tutup',style:'cancel'},{text:'Buka GitHub',onPress:()=>void Linking.openURL('https://github.com/'+item.repo)}])}
+                [{text:'Tutup',style:'cancel'},
+                ...(item.status==='server-needed'?[{text:'Atur MCP',onPress:()=>{
+                  setConnectorName(item.name);setConnectorUrl('');onPage('connectors');setAddConnector(true);
+                }}]:[]),
+                {text:'Buka GitHub',onPress:()=>void Linking.openURL('https://github.com/'+item.repo)}])}
               right={<Feather name="lock" color={C.subtle} size={16}/>}/>)}
         </Section>)}
     </>}
