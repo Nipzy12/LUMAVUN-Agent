@@ -56,7 +56,7 @@ function Row({title,icon,detail,onPress,switchValue,onToggle,disabled=false,last
   return <Pressable accessibilityRole={onToggle?'switch':'button'}
     accessibilityState={{disabled,checked:switchValue}}
     disabled={disabled||(!onPress&&!onToggle)}
-    onPress={onPress||(onToggle?()=>onToggle(!switchValue):undefined)}
+    onPress={onPress}
     style={{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingVertical:15,minHeight:66,
       borderBottomWidth:last?0:1,borderBottomColor:CL.border,gap:14,opacity:disabled?.52:1}}>
     {icon?<Feather name={icon} color={CL.accent} size={21}/>:null}
