@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -28,11 +28,19 @@ function TextWithCode({ value, largeText = false }: { value: string; largeText?:
   </View>;
 }
 
-export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, onSaveCode }: {
+export function ChatView({ entries, mode, onSuggestion, busy, name, largeText, onSaveCode, keyboardVisible = false }: {
   entries: Entry[]; mode: 'chat' | 'code'; busy: boolean; onSuggestion: (text: string) => void;
-  name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void;
+  name?: string; largeText?: boolean; onSaveCode?: (entry: Entry) => void; keyboardVisible?: boolean;
 }) {
-  return <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 28, paddingBottom: 28, flexGrow: 1 }}
+  const scroll = useRef<ScrollView>(null);
+  useEffect(() => {
+    if(entries.length || keyboardVisible) {
+      const timer=setTimeout(()=>scroll.current?.scrollToEnd({animated:true}),90);
+      return ()=>clearTimeout(timer);
+    }
+  },[entries.length,keyboardVisible,busy]);
+  return <ScrollView ref={scroll} onContentSizeChange={()=>{if(entries.length)scroll.current?.scrollToEnd({animated:false})}}
+    keyboardDismissMode="interactive" style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 20, paddingBottom: keyboardVisible ? 10 : 28, flexGrow: 1 }}
     keyboardShouldPersistTaps="handled">
     {entries.length === 0 ? <View style={{
       flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 14, gap: 13
