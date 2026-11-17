@@ -15,7 +15,7 @@ const level=(n:unknown,defaultValue:PreferenceLevel):PreferenceLevel =>
   n===0||n===1||n===2?n:defaultValue;
 const string=(s:unknown,max:number)=>typeof s==='string'?s.trim().slice(0,max):'';
 
-export function normalizePreferences<T extends UserPreferences>(value:Partial<T>):UserPreferences{
+export function normalizePreferences(value:Partial<UserPreferences>):UserPreferences{
   const personality=PERSONALITIES.find(p=>p.id===value.personality)?.id||'default';
   return {
     name:string(value.name,32)||'Pengguna',
