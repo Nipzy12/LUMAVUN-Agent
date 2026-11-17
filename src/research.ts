@@ -46,7 +46,6 @@ export async function runResearch(history: APIMessage[], deps: ResearchDeps): Pr
         const reason = blocked ? 'Semua pencarian ditolak.' : 'Model tidak menjalankan tool pencarian.';
         return { content: reason + ' Tidak ada hasil riset web yang dapat diklaim.\n\n' + result.content, calls: 0, sources: [] };
       }
-      const sources = [...urls];
       const verified = researchSourcesFooter(sources,5);
       return { content: result.content + verified, calls, sources: [...urls] };
     }
