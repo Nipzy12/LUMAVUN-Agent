@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { runCodeAgent } from './src/agent';
 import { runResearch } from './src/research';
 import { buildBrainPrompt } from './src/intelligence';
-import { extractStylePreference, memoryPrompt, type MemoryRecord } from './src/memoryPolicy';
+import { extractStylePreference, memoryPrompt, isSensitiveMemoryText, type MemoryRecord } from './src/memoryPolicy';
 import { listMemories, migrateLegacyMemories, saveMemory, deleteMemory, clearMemories } from './src/memoryDb';
 import { isResearchTestPrompt } from './src/researchFormatter';
 import { allResearchConnectors, builtinGuidance, modelIdentityAnswer } from './src/builtinRegistry';
@@ -92,7 +92,8 @@ function Main() {
         try{
           const restored=await migrateLegacyMemories(loaded.extra.memoryNotes);
           setMemoryRecords(restored);
-          setState({...loaded,extra:{...loaded.extra,memoryNotes:[]}});
+          setState({...loaded,extra:{...loaded.extra,memoryNotes:
+            loaded.extra.memoryNotes.filter(n=>isSensitiveMemoryText(n.text))}});
         }catch(error){
           setState(loaded);
           setNotice('Gagal membuka DB memori: '+String(error instanceof Error?error.message:error));
