@@ -549,6 +549,14 @@ export function HubScreen({page,extra,cloudModels,selectedCloud,onBack,onPage,on
         onSaveMemory(note.trim());
         setNote('');
       }}/>
+      {extra.memoryNotes.length>0&&<Section title="Catatan lama yang belum dimigrasi">
+        <Text style={[tiny,{padding:13}]}>Catatan lama berpotensi sensitif tidak digunakan sebagai konteks AI. Hapus catatan bila tidak diperlukan.</Text>
+        {extra.memoryNotes.map(n=><View key={n.id} style={[style.row,{padding:12,gap:8}]}>
+          <Text style={{color:C.text,flex:1}} numberOfLines={3}>{n.text}</Text>
+          <ActionIcon name="trash-2" color={C.danger} onPress={()=>change({
+            memoryNotes:extra.memoryNotes.filter(x=>x.id!==n.id)})}/>
+        </View>)}
+      </Section>}
       <Section title={'Memori SQLite ('+memories.length+')'}>
         {memories.length===0&&<Text style={[tiny,{padding:14}]}>Belum ada memori. Tambahkan catatan atau gunakan perintah “ingat:”.</Text>}
         {memories.map(m=><View key={m.id} style={[style.row,{
