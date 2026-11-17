@@ -21,7 +21,7 @@ import { AttachmentSheet, AttachmentChips } from './src/components/AttachmentShe
 import * as SecureStore from 'expo-secure-store';
 import { HubScreen, type HubPage } from './src/components/HubScreen';
 import { ProjectDetailScreen } from './src/components/ProjectDetailScreen';
-import { completeLocal, installedModelIds, GGUF_CATALOG } from './src/localAI';
+import { completeLocal, installedModelIds, GGUF_CATALOG, loadCustomModels } from './src/localAI';
 import { activeSkillContext } from './src/githubSkills';
 import { addUsage } from './src/featureState';
 import { listMcpTools, asAgentTool, callMcpTool } from './src/mcpClient';
@@ -87,7 +87,7 @@ function Main() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    void Promise.all([loadState(), loadSecret()])
+    void Promise.all([loadState(), loadSecret(), loadCustomModels()])
       .then(async ([loaded,secret]) => {
         try{
           const restored=await migrateLegacyMemories(loaded.extra.memoryNotes);
