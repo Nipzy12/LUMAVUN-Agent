@@ -24,13 +24,21 @@ export type APITool = {
 };
 export type Completion = { content: string; toolCalls: ToolCall[]; model: string; usage?: { prompt_tokens?:number; completion_tokens?:number } };
 
-export const PRESETS: Record<'openai' | 'openrouter', string> = {
+export const CLOUDFLARE_MODELS:ModelInfo[]=[
+  {id:'@cf/openai/gpt-oss-120b',name:'GPT-OSS 120B (Cloudflare Workers AI)'},
+  {id:'@cf/openai/gpt-oss-20b',name:'GPT-OSS 20B (Cloudflare Workers AI)'}
+];
+export const PRESETS: Record<'openai' | 'openrouter' | 'cloudflare', string> = {
   openai: 'https://api.openai.com/v1',
-  openrouter: 'https://openrouter.ai/api/v1'
+  openrouter: 'https://openrouter.ai/api/v1',
+  cloudflare:'https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1'
 };
 
 function endpoint(settings: Settings, path: string) {
   const url = settings.baseUrl.trim().replace(/\/+$/, '');
+  if(settings.provider==='cloudflare' && /\/accounts\/(?:ACCOUNT_ID|undefined|\s*)\/ai\/v1/i.test(url)){
+    throw new Error('Masukkan Cloudflare Account ID di Pengaturan provider dahulu.');
+  }
   if (!url.startsWith('https://') && !url.startsWith('http://')) {
     throw new Error('Provider URL must start with https:// (or http:// on a trusted local network)');
   }
@@ -70,6 +78,7 @@ async function api<T>(
 }
 
 export async function fetchModels(settings: Settings, key: string): Promise<ModelInfo[]> {
+  if(settings.provider==='cloudflare')return CLOUDFLARE_MODELS;
   const data = await api<{ data?: Array<{ id?: string; name?: string }> }>(settings, key, 'models');
   if (!Array.isArray(data.data)) throw new Error('Invalid provider model list');
   return data.data.filter((m) => typeof m?.id === 'string' && m.id.length > 0)
