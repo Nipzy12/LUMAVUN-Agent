@@ -7,6 +7,7 @@ import { C, PrimaryButton, Sheet, style } from '../ui';
 const PROVIDERS: Array<{ id: ProviderKind; label: string }> = [
   { id: 'openai', label: 'OpenAI' },
   { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'cloudflare', label: 'Cloudflare Workers AI' },
   { id: 'custom', label: 'Custom API' }
 ];
 
@@ -47,12 +48,23 @@ export function SettingsSheet({ open, onClose, settings, apiKey, onSave, onModel
     <Text style={style.label}>AI PROVIDER</Text>
     <View style={[style.row, { gap: 7, flexWrap: 'wrap' }]}>
       {PROVIDERS.map(p => <Pressable key={p.id} onPress={() => setDraft(s => ({
-          ...s, provider: p.id, baseUrl: p.id === 'custom' ? s.baseUrl : PRESETS[p.id]
+          ...s, provider: p.id, baseUrl: p.id === 'custom' ? s.baseUrl : PRESETS[p.id],
+          model:p.id==='cloudflare'?'@cf/openai/gpt-oss-120b':(p.id===s.provider?s.model:'')
         }))}
         style={[style.pill, draft.provider === p.id && { backgroundColor: C.accentDeep }]}>
         <Text style={style.txt}>{p.label}</Text>
       </Pressable>)}
     </View>
+    {draft.provider==='cloudflare'&&<>
+      <Text style={style.label}>CLOUDFLARE ACCOUNT ID</Text>
+      <TextInput style={style.input} autoCapitalize="none" autoCorrect={false}
+        placeholder="Account ID Cloudflare"
+        placeholderTextColor={C.subtle}
+        value={draft.baseUrl.match(/\/accounts\/([^/]+)\/ai\/v1/)?.[1]?.replace('ACCOUNT_ID','')||''}
+        onChangeText={v=>setDraft(prev=>({...prev,
+          baseUrl:'https://api.cloudflare.com/client/v4/accounts/'+v.trim()+'/ai/v1'}))}/>
+      <Text style={style.subtitle}>GPT-OSS 120B tersedia sebagai model cloud, tidak diunduh ke Android. Dibutuhkan token Cloudflare dengan izin Workers AI.</Text>
+    </>}
     <Text style={style.label}>BASE URL (OPENAI-COMPATIBLE)</Text>
     <TextInput style={style.input} value={draft.baseUrl}
       onChangeText={v => setDraft(s => ({ ...s, baseUrl: v }))}
