@@ -10,8 +10,18 @@ export type MemoryNote = { id:string; text:string; createdAt:number };
 export type UsageEvent = { at:number; kind:'chat'|'agent'|'local'; model:string; promptTokens:number|null; completionTokens:number|null };
 export type LocalModelInfo = { id:string; name:string; sizeBytes:number; url:string; sha256?:string; family:string; installed:boolean };
 
+export type BrainSettings = {
+  reasoning: 'fast' | 'balanced' | 'deep';
+  research: 'off' | 'web' | 'deep';
+  customPrompt: string;
+};
+export const DEFAULT_BRAIN: BrainSettings = {
+  reasoning: 'balanced', research: 'off', customPrompt: ''
+};
+
 export type ExtraState = {
   capabilities:CapabilityState;
+  brain:BrainSettings;
   connectorDiscovery:boolean;
   connectors:Connector[];
   skills:Skill[];
@@ -21,12 +31,14 @@ export type ExtraState = {
   localModelInstalled:string[];
 };
 export const DEFAULT_EXTRA: ExtraState = {
-  capabilities:DEFAULT_CAPABILITIES,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
+  capabilities:DEFAULT_CAPABILITIES,brain:DEFAULT_BRAIN,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
   localModelId:'',localModelInstalled:[]
 };
 export function withExtra(raw: Partial<ExtraState>):ExtraState {
   return {...DEFAULT_EXTRA,...raw,
     capabilities:{...DEFAULT_CAPABILITIES,...(raw.capabilities||{})},
+    brain:{...DEFAULT_BRAIN,...(raw.brain||{}),
+      customPrompt:typeof raw.brain?.customPrompt==='string' ? raw.brain.customPrompt.slice(0,4000) : ''},
     connectors:Array.isArray(raw.connectors)?raw.connectors:[],
     skills:Array.isArray(raw.skills)?raw.skills:[],
     memoryNotes:Array.isArray(raw.memoryNotes)?raw.memoryNotes:[],
