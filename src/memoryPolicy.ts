@@ -40,7 +40,7 @@ export function pickMemory(records:MemoryRecord[],query:string,limit=8):MemoryRe
     const overlap=[...tokens(item.text)].filter(t=>queryTokens.has(t)).length;
     const score=item.kind==='style'?100:overlap*10+(item.source==='explicit'?2:0);
     return {item,score};
-  }).filter(x=>x.item.kind==='style'||x.score>0)
+  }).filter(x=>x.item.kind==='style'||x.score>=10)
     .sort((a,b)=>b.score-a.score||b.item.updatedAt-a.item.updatedAt)
     .slice(0,limit).map(x=>x.item);
 }
