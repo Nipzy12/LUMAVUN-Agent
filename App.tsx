@@ -285,8 +285,8 @@ function Main() {
   }
   async function sendMessage() {
     const content = draft.trim();
-    if (!content || busy) return;
-    if(state.extra.capabilities.chatMemory && /^ingat\s*:/i.test(content)) {
+    if ((!content && !attachments.length) || busy) return;
+    if(state.extra.capabilities.chatMemory && !attachments.length && /^ingat\s*:/i.test(content)) {
       const memoryText=content.replace(/^ingat\s*:/i,'').trim();
       if(memoryText) {
         setState(previous=>({...previous,extra:{...previous.extra,
@@ -306,8 +306,12 @@ function Main() {
     if (mainPage === 'code' && codeViewMode === 'work' && !state.extra.capabilities.codeTools) {
       setNotice('Aktifkan tool Code Agent pada Kemampuan.');return;
     }
-    if (mainPage === 'code' && codeViewMode === 'work' && localSelected) {
-      setNotice('Mode Work memerlukan model provider yang mendukung tool calling. Model GGUF lokal saat ini tersedia untuk Chat.');return;
+    if (localSelected && attachments.some(a=>a.kind==='image')) {
+      setNotice('Vision belum tersedia pada model GGUF lokal. Pilih provider vision untuk mengirim foto.');return;
+    }
+    if (localSelected && mainPage==='chat' && state.extra.capabilities.webSearch &&
+      state.extra.brain.research!=='off') {
+      setNotice('Riset web membutuhkan provider yang mendukung pemanggilan tool MCP.');return;
     }
     if (mainPage === 'code' && codeViewMode === 'work' && !state.selectedProjectId) {
       setNotice('Create or choose a Code Workspace first.');
@@ -318,13 +322,20 @@ function Main() {
     const conversationMode = mainPage === 'code' ? 'code' : 'chat';
     const target = (current?.mode === conversationMode ? current : undefined)
       || newConversation(conversationMode, state.settings.model);
-    const nextEntries = [...target.entries, newEntry('user', content)];
+    const selectedAttachments = [...attachments];
+    const visibleText = content || 'Analisis lampiran berikut';
+    const attachedNames=selectedAttachments.map(a=>a.name).join(', ');
+    const userEntry=newEntry('user',visibleText+(attachedNames?'\n[Lampiran: '+attachedNames+']':''));
+    const documentContext=selectedAttachments.filter(a=>a.kind==='text')
+      .map(a=>'Isi dokumen '+a.name+':\n'+a.content).join('\n\n').slice(0,160000);
+    if(documentContext)userEntry.detail=documentContext;
+    const nextEntries = [...target.entries, userEntry];
     const chatId = target.id;
     setState(previous => {
       const existing = previous.chats.some(c => c.id === chatId);
       const updated: Conversation = {
         ...target, entries: nextEntries,
-        title: target.entries.length === 0 ? content.slice(0, 58) : target.title,
+        title: target.entries.length === 0 ? visibleText.slice(0, 58) : target.title,
         updatedAt: Date.now()
       };
       return {
@@ -334,6 +345,8 @@ function Main() {
       };
     });
     setDraft('');
+    setAttachments([]);
+    Keyboard.dismiss();
     if (state.profile.haptics) Vibration.vibrate(10);
     setBusy(true);
     setNotice('');
@@ -342,7 +355,11 @@ function Main() {
     const messages: APIMessage[] = nextEntries
       .filter(e => e.role === 'user' || e.role === 'assistant')
       .slice(-20)
-      .map(e => ({ role: e.role as 'user' | 'assistant', content: e.text }));
+      .map(e => ({ role: e.role as 'user' | 'assistant',
+        content: e.text+(e.detail?'\n\n'+e.detail:'') }));
+    if(selectedAttachments.length && messages.length) {
+      messages[messages.length-1].content=buildAttachmentInput(content,selectedAttachments);
+    }
 
 
     try {
@@ -350,7 +367,8 @@ function Main() {
       const skillNotes=activeSkillContext(state.extra.skills);
       const memory=state.extra.capabilities.chatMemory?
         state.extra.memoryNotes.slice(-12).map(n=>'- '+n.text.slice(0,600)).join('\n'):'';
-      const contextText=skillNotes+
+      const contextText=buildBrainPrompt(state.extra.brain,mainPage==='code'?'work':'chat',
+        localSelected?state.extra.localModelId:state.settings.model)+'\n\n'+skillNotes+
         (memory?'\nLocal user-approved memory notes:\n'+memory:'')+
         (project?.customInstructions?'\nProject instructions:\n'+project.customInstructions.slice(0,7000):'')+
         (project?.memory?'\nProject notes:\n'+project.memory.slice(0,5000):'');
