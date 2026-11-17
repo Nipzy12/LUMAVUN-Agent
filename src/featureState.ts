@@ -24,6 +24,7 @@ export type ExtraState = {
   brain:BrainSettings;
   builtinExaEnabled:boolean;
   builtinSkillsEnabled:boolean;
+  autoStyleMemory:boolean;
   connectorDiscovery:boolean;
   connectors:Connector[];
   skills:Skill[];
@@ -33,7 +34,7 @@ export type ExtraState = {
   localModelInstalled:string[];
 };
 export const DEFAULT_EXTRA: ExtraState = {
-  capabilities:DEFAULT_CAPABILITIES,brain:DEFAULT_BRAIN,builtinExaEnabled:true,builtinSkillsEnabled:true,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
+  capabilities:DEFAULT_CAPABILITIES,brain:DEFAULT_BRAIN,builtinExaEnabled:true,builtinSkillsEnabled:true,autoStyleMemory:true,connectorDiscovery:true,connectors:[],skills:[],memoryNotes:[],usageEvents:[],
   localModelId:'',localModelInstalled:[]
 };
 export function withExtra(raw: Partial<ExtraState>):ExtraState {
@@ -41,6 +42,7 @@ export function withExtra(raw: Partial<ExtraState>):ExtraState {
     capabilities:{...DEFAULT_CAPABILITIES,...(raw.capabilities||{})},
     builtinExaEnabled:raw.builtinExaEnabled!==false,
     builtinSkillsEnabled:raw.builtinSkillsEnabled!==false,
+    autoStyleMemory:raw.autoStyleMemory!==false,
     brain:{...DEFAULT_BRAIN,...(raw.brain||{}),
       customPrompt:typeof raw.brain?.customPrompt==='string' ? raw.brain.customPrompt.slice(0,4000) : ''},
     connectors:Array.isArray(raw.connectors)?raw.connectors:[],
