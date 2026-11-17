@@ -51,7 +51,7 @@ export function builtinById(id: string): BuiltinReference | undefined {
   return BUILTIN_REFERENCES.find(x => x.id === id);
 }
 export function allResearchConnectors(custom: Connector[]): Connector[] {
-  return [BUILTIN_EXA_CONNECTOR,...custom.filter(c=>c.enabled && c.id!==BUILTIN_EXA_CONNECTOR.id && c.url!==EXA_MCP_URL)];
+  return [...custom.filter(c=>c.enabled && c.id!==BUILTIN_EXA_CONNECTOR.id), BUILTIN_EXA_CONNECTOR];
 }
 /** Scope immutable skills by intent; never run upstream code or copy its system prompts. */
 export function builtinGuidance(question: string): string {
