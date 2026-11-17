@@ -52,7 +52,7 @@ export function personalityPrompt(p:UserPreferences):string{
     'Use structured headings and concise lists for complex answers.'][p.formatting];
   const emoji=['Avoid emojis.','Use an occasional emoji only in informal exchanges.',
     'Allow emojis in casual conversations, not serious or technical responses.'][p.emoji];
-  const name=p.name!=='Pengguna'?\'If relevant, the user prefers to be called "\'+p.name+'". Do not overuse their name.\':'';
+  const name=p.name!=='Pengguna'?'If relevant, the user prefers to be called "'+p.name+'". Do not overuse their name.':'';
   const pieces=[
     'LUMAVUN personalization (user preferences, lower priority than safety and actual tool results):',
     'Respond in '+(p.appLanguage==='en'?'English.':'Bahasa Indonesia.'),
