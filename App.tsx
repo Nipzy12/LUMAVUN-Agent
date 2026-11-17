@@ -705,7 +705,8 @@ function Main() {
   </SafeAreaView>;
 
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={keyboardVisible?['top']:['top','bottom']}>
-    <StatusBar barStyle="light-content" />
+    <StatusBar barStyle={accountPage?'dark-content':'light-content'}
+      backgroundColor={accountPage?'#FBFAFC':C.bg}/>
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1 }}>
 
 
