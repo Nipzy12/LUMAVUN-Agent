@@ -1,5 +1,6 @@
 import type { Connector } from './featureState';
 import type { MCPTool } from './mcpClient';
+import { extractWebSources, summarizeWebSources, type WebSource } from './researchFormatter';
 
 export type DirectWebDeps = {
   discover(connector: Connector): Promise<MCPTool[]>;
@@ -8,7 +9,7 @@ export type DirectWebDeps = {
   event?(message: string): void;
   signal?: AbortSignal;
 };
-export type DirectWebResult = { evidence: string; urls: string[]; calls: number; provider: string };
+export type DirectWebResult = { evidence: string; urls: string[]; sources: WebSource[]; calls: number; provider: string };
 const urlPattern=/https?:\/\/[^\s<>"'\\)\]]+/g;
 export function evidenceUrls(text: string): string[] {
   return [...new Set((text.match(urlPattern)||[]).map(x=>x.replace(/[.,;!}?]+$/,''))
@@ -36,7 +37,7 @@ export async function runDirectWeb(query: string, connectors: Connector[],
   }
   if(!connector||!search)throw new Error('Tidak ada MCP search yang dapat dihubungi. '+errors.join(' | '));
   const questions=mode==='deep'?[query,query+' sumber resmi dokumentasi',query+' analisis terbaru dan perspektif berbeda']:[query];
-  const evidence:string[]=[];const urls=new Set<string>();let calls=0;
+  const evidence:string[]=[];const results:WebSource[]=[];let calls=0;
   for(let i=0;i<questions.length;i++){
     if(deps.signal?.aborted)throw new Error('Riset dihentikan');
     const args=searchArguments(search,questions[i]);
@@ -45,12 +46,18 @@ export async function runDirectWeb(query: string, connectors: Connector[],
     if(deps.signal?.aborted)throw new Error('Riset dihentikan');
     if(!ok){evidence.push('Pencarian '+(i+1)+' ditolak.');continue}
     try{
-      const result=(await deps.invoke(connector,search.name,args)).slice(0,18000);
+      const result=(await deps.invoke(connector,search.name,args)).slice(0,150000);
       calls++;
-      for(const url of evidenceUrls(result))if(urls.size<18)urls.add(url);
-      evidence.push('Pencarian '+(i+1)+':\n'+result.slice(0,mode==='deep'?5500:10000));
+      const found=extractWebSources(result,questions[i]);
+      for(const source of found){
+        if(!results.some(existing=>existing.url===source.url))results.push(source);
+      }
+      if(!found.length)evidence.push('Pencarian '+(i+1)+': Tidak ada URL sumber yang valid.');
     }catch(e){evidence.push('Pencarian '+(i+1)+' gagal: '+String(e instanceof Error?e.message:e))}
   }
   if(!calls)throw new Error('Tidak ada pencarian yang berhasil diselesaikan.');
-  return {provider,calls,urls:[...urls],evidence:evidence.join('\n\n').slice(0,mode==='deep'?16000:10000)};
+  const sources=results.slice(0,mode==='deep'?6:4);
+  return {provider,calls,urls:sources.map(s=>s.url),sources,
+    evidence:(summarizeWebSources(sources,mode==='deep'?6:4)+
+      (evidence.length?'\n'+evidence.join('\n'):'')).slice(0,4000)};
 }
