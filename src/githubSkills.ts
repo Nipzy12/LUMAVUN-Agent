@@ -2,14 +2,22 @@ import type { Skill } from './featureState';
 import { sanitizeSkillText } from './featureState';
 
 export type SkillCandidate={repo:string;path:string;name:string;description:string};
+const TRADER_SKILLS = ['alerts','analyst','broker','budget','copycat','news','pelosi','rebalance','risk','screener','tax'] as const;
+const REPLICA_SKILLS = ['architect','backend','brand','build','deploy','design','diff','entrepreneur','launch','recon','test'] as const;
 export const FEATURED_SKILLS:SkillCandidate[]=[
  {repo:'anthropics/skills',path:'skills/pdf/SKILL.md',name:'PDF',description:'Panduan bekerja dengan dokumen PDF'},
  {repo:'anthropics/skills',path:'skills/docx/SKILL.md',name:'DOCX',description:'Panduan dokumen Word'},
  {repo:'anthropics/skills',path:'skills/pptx/SKILL.md',name:'PPTX',description:'Panduan presentasi'},
  {repo:'anthropics/skills',path:'skills/xlsx/SKILL.md',name:'XLSX',description:'Panduan spreadsheet'},
- {repo:'Aas-ee/open-webSearch',path:'skills/open-websearch/SKILL.md',name:'Open WebSearch',description:'Panduan integrasi web search; membutuhkan daemon/server aktif'},
- {repo:'Jakeschincariol/trader-skill',path:'trader-risk/SKILL.md',name:'Trader Risk',description:'Metode risiko trading; skrip Python tidak berjalan di APK'},
- {repo:'Jakeschincariol/replica-skill',path:'replica-recon/SKILL.md',name:'Replica Recon',description:'Metode pemetaan fitur dan alur aplikasi secara clean-room'}
+ {repo:'Aas-ee/open-webSearch',path:'skills/open-websearch/SKILL.md',name:'Open WebSearch',description:'Metode riset berbasis server MCP/CLI terpisah'},
+ ...TRADER_SKILLS.map(name=>({
+   repo:'Jakeschincariol/trader-skill',path:'trader-'+name+'/SKILL.md',
+   name:'Trader '+name,description:'Metode trader '+name+'; kode Python butuh runner eksternal'
+ })),
+ ...REPLICA_SKILLS.map(name=>({
+   repo:'Jakeschincariol/replica-skill',path:'replica-'+name+'/SKILL.md',
+   name:'Replica '+name,description:'Metode clean-room '+name+'; kode eksternal tidak dijalankan'
+ }))
 ];
 export function skillUrl(repo:string,path:string){
   if(!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repo)||!/^([a-z0-9_.-]+\/)*[a-z0-9_.-]+\.md$/i.test(path)||
