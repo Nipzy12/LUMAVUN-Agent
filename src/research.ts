@@ -1,4 +1,5 @@
 import type { APIMessage, APITool, Completion } from './provider';
+import { extractWebSources, summarizeWebSources, researchSourcesFooter, type WebSource } from './researchFormatter';
 
 export type ResearchMode = 'web' | 'deep';
 export type ResearchResult = { content: string; calls: number; sources: string[] };
@@ -25,6 +26,7 @@ export async function runResearch(history: APIMessage[], deps: ResearchDeps): Pr
   const maxCalls = deps.mode === 'deep' ? 12 : 4;
   const maxRounds = deps.mode === 'deep' ? 9 : 5;
   const urls = new Set<string>();
+  const sources:WebSource[]=[];
   let calls = 0;
   let blocked = 0;
   const messages: APIMessage[] = [
@@ -45,10 +47,8 @@ export async function runResearch(history: APIMessage[], deps: ResearchDeps): Pr
         return { content: reason + ' Tidak ada hasil riset web yang dapat diklaim.\n\n' + result.content, calls: 0, sources: [] };
       }
       const sources = [...urls];
-      const verified = sources.length
-        ? '\n\nTautan yang terdeteksi dalam keluaran tools (periksa relevansinya):\n' + sources.map(x => '- ' + x).join('\n')
-        : '\n\nTool dipanggil, tetapi tidak mengembalikan URL sumber yang bisa diverifikasi.';
-      return { content: result.content + verified, calls, sources };
+      const verified = researchSourcesFooter(sources,5);
+      return { content: result.content + verified, calls, sources: [...urls] };
     }
     messages.push({ role: 'assistant', content: result.content || null, tool_calls: batches });
     for (const tool of batches) {
@@ -66,8 +66,12 @@ export async function runResearch(history: APIMessage[], deps: ResearchDeps): Pr
           if (approved) {
             calls++;
             deps.event?.('Riset: membaca sumber ' + calls + ' / ' + maxCalls);
-            response = String(await deps.call(tool.function.name, args)).slice(0, 45000);
-            for (const link of sourcesIn(response)) if (urls.size < 24) urls.add(link);
+            const raw=String(await deps.call(tool.function.name,args)).slice(0,150000);
+            const found=extractWebSources(raw,JSON.stringify(args));
+            for(const source of found){
+              if(!urls.has(source.url)&&urls.size<12){urls.add(source.url);sources.push(source);}
+            }
+            response=summarizeWebSources(found,5).slice(0,4500);
           } else {
             blocked++;
             response = 'DENIED_BY_USER: Pencarian ini tidak dilakukan.';
