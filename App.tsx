@@ -366,7 +366,7 @@ function Main() {
       const memory=state.extra.capabilities.chatMemory?
         state.extra.memoryNotes.slice(-12).map(n=>'- '+n.text.slice(0,600)).join('\n'):'';
       const contextText=buildBrainPrompt(state.extra.brain,mainPage==='code'?'work':'chat',
-        localSelected?state.extra.localModelId:state.settings.model)+'\n\n'+skillNotes+builtinGuidance(content)+
+        localSelected?state.extra.localModelId:state.settings.model)+'\n\n'+skillNotes+builtinGuidance(content,state.extra.builtinSkillsEnabled)+
         (memory?'\nLocal user-approved memory notes:\n'+memory:'')+
         (project?.customInstructions?'\nProject instructions:\n'+project.customInstructions.slice(0,7000):'')+
         (project?.memory?'\nProject notes:\n'+project.memory.slice(0,5000):'');
@@ -380,9 +380,9 @@ function Main() {
         const projectId = state.selectedProjectId;
         const externalMap=new Map<string,{connector:typeof state.extra.connectors[number];tool:string;token:string}>();
         const externalTools:APITool[]=[];
-        for(const connector of (state.extra.capabilities.webSearch?allResearchConnectors(state.extra.connectors):state.extra.connectors.filter(x=>x.enabled)).filter(x=>!localSelected)) {
+        for(const connector of (state.extra.capabilities.webSearch?allResearchConnectors(state.extra.connectors,state.extra.builtinExaEnabled):state.extra.connectors.filter(x=>x.enabled)).filter(x=>!localSelected)) {
           try {
-            const token=connector.id==='builtin_exa_search'?'':await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
+            const token=await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
             const tools=await listMcpTools(connector,token);
             for(const tool of tools.slice(0,25)) {
               const definition=asAgentTool(connector,tool);
@@ -446,11 +446,11 @@ function Main() {
         let extraWebContext='';
         let webSources:string[]=[];
         if(state.extra.capabilities.webSearch && state.extra.brain.research!=='off') {
-          const result=await runDirectWeb(content,allResearchConnectors(state.extra.connectors),
+          const result=await runDirectWeb(content,allResearchConnectors(state.extra.connectors,state.extra.builtinExaEnabled),
             state.extra.brain.research==='deep'?'deep':'web',{
-              discover:async connector=>listMcpTools(connector,connector.id==='builtin_exa_search'?'':await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||''),
+              discover:async connector=>listMcpTools(connector,await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||''),
               invoke:async (connector,name,args)=>callMcpTool(connector,
-                connector.id==='builtin_exa_search'?'':await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'',name,args),
+                await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'',name,args),
               approve:async (connector,tool,args)=>new Promise(resolve=>{
                 if(controller.signal.aborted){resolve(false);return}
                 approvalResolve.current=resolve;
@@ -484,7 +484,7 @@ function Main() {
           if(state.extra.capabilities.webSearch) {
             const registry=new Map<string,{connector:typeof state.extra.connectors[number];tool:string;token:string}>();
             const searchTools:APITool[]=[];
-            for(const connector of allResearchConnectors(state.extra.connectors)){
+            for(const connector of allResearchConnectors(state.extra.connectors,state.extra.builtinExaEnabled)){
               try{
                 const token=await SecureStore.getItemAsync('lumavun.mcp.'+connector.id)||'';
                 const tools=await listMcpTools(connector,token);
