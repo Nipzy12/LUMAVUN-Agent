@@ -124,6 +124,7 @@ export function PersonalSettingsScreen({page,profile,extra,onProfile,onExtra,onB
   const [preferences,setPreferences]=useState(profile.personalInstructions);
   const [customTone,setCustomTone]=useState(profile.personalityInstructions);
   const [petName,setPetName]=useState(profile.petName);
+  const [editingPet,setEditingPet]=useState(false);
   const [picker,setPicker]=useState<'language'|'personality'|null>(null);
   const [importing,setImporting]=useState(false);
   useEffect(()=>{
@@ -216,8 +217,20 @@ export function PersonalSettingsScreen({page,profile,extra,onProfile,onExtra,onB
         </Text>
         <Group>
           <Row icon="heart" title="Peliharaan" detail={profile.petName||'Belum ada'}
-            onPress={()=>Alert.prompt ? Alert.alert('Peliharaan','Isi data peliharaan pada profil khusus jika tersedia.'):
-              onNavigate('references')} last/>
+            onPress={()=>setEditingPet(x=>!x)} last/>
+          {editingPet&&<View style={{padding:14,gap:10}}>
+            <Text style={note}>Nama peliharaan (opsional)</Text>
+            <TextInput value={petName} onChangeText={setPetName}
+              maxLength={80} placeholder="Nama peliharaan"
+              placeholderTextColor={CL.muted}
+              style={{borderWidth:1,borderColor:CL.border,borderRadius:13,padding:12,
+                color:CL.text,backgroundColor:CL.bg}}/>
+            <Pressable accessibilityRole="button"
+              onPress={()=>{change({petName:petName.trim().slice(0,80)});setEditingPet(false)}}
+              style={{backgroundColor:CL.accent,borderRadius:13,padding:12}}>
+              <Text style={{color:'white',textAlign:'center'}}>Simpan peliharaan</Text>
+            </Pressable>
+          </View>}
         </Group>
         <Text style={{...note,marginTop:7,marginBottom:8,marginLeft:12}}>Kecerdasan</Text>
         <Group>
