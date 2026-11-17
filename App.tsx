@@ -157,6 +157,32 @@ function Main() {
     }
   }
 
+  async function pickAttachment(kind:'camera'|'photo'|'file') {
+    try {
+      if(kind==='file') {
+        const picked=await DocumentPicker.getDocumentAsync({type:'*/*',multiple:false,copyToCacheDirectory:true});
+        if(!picked.canceled){const item=await fromDocument(picked.assets[0]);setAttachments(v=>[...v,item].slice(0,4))}
+      }else{
+        if(kind==='camera'){
+          const permission=await ImagePicker.requestCameraPermissionsAsync();
+          if(!permission.granted)throw new Error('Izin kamera belum diberikan');
+        }
+        const opts={mediaTypes:['images'] as ImagePicker.MediaType[],base64:true,quality:0.72,allowsEditing:false};
+        const picked=kind==='camera'?await ImagePicker.launchCameraAsync(opts):await ImagePicker.launchImageLibraryAsync(opts);
+        if(!picked.canceled){const item=await fromImage(picked.assets[0]);setAttachments(v=>[...v,item].slice(0,4))}
+      }
+    }catch(e){Alert.alert('Lampiran gagal',e instanceof Error?e.message:String(e))}
+  }
+  function openPicker(kind:'camera'|'photo'|'file'){
+    setAttachmentSheetOpen(false);
+    setTimeout(()=>{void pickAttachment(kind)},250);
+  }
+  function selectChatProject(projectId:string){
+    setState(prev=>({...prev,selectedProjectId:projectId,
+      chats:prev.chats.map(c=>c.id===prev.selectedChatId?{...c,projectId:projectId||undefined}:c)}));
+    setAttachmentSheetOpen(false);
+  }
+
   function handleCreateProject(name: string) {
     try {
       const now = Date.now();
@@ -661,6 +687,8 @@ function Main() {
           entries={current?.mode==='code'?current.entries:[]}
           project={activeProject} busy={busy} draft={draft} onDraft={setDraft}
           onMenu={()=>setSidebarOpen(true)} onWorkspace={()=>setWorkspaceOpen(true)}
+           onAttachments={()=>{Keyboard.dismiss();setAttachmentSheetOpen(true)}}
+           attachments={attachments} onRemoveAttachment={itemId=>setAttachments(v=>v.filter(a=>a.id!==itemId))}
           onSend={()=>void sendMessage()} onStop={stop}
           onBackToChat={()=>navigate('chat')}
         />}
@@ -816,6 +844,29 @@ function Main() {
         handlePickModel(model);
         setState(prev=>({...prev,extra:{...prev.extra,localModelId:''}}));
       }} />
+    <AttachmentSheet open={attachmentSheetOpen} onClose={()=>setAttachmentSheetOpen(false)}
+      attachments={attachments} onRemove={itemId=>setAttachments(v=>v.filter(a=>a.id!==itemId))}
+      onCamera={()=>openPicker('camera')} onPhoto={()=>openPicker('photo')} onFile={()=>openPicker('file')}
+      projects={state.projects} selectedProjectId={current?.projectId}
+      onProject={selectChatProject}
+      webEnabled={state.extra.capabilities.webSearch}
+      onWeb={value=>setState(prev=>({...prev,extra:{...prev.extra,
+        capabilities:{...prev.extra.capabilities,webSearch:value},
+        brain:{...prev.extra.brain,research:value?(prev.extra.brain.research==='off'?'web':prev.extra.brain.research):'off'}
+      }}))}
+      memoryEnabled={state.extra.capabilities.chatMemory}
+      onMemory={value=>setState(prev=>({...prev,extra:{...prev.extra,
+        capabilities:{...prev.extra.capabilities,chatMemory:value}
+      }}))}
+      brain={state.extra.brain}
+      onResearch={research=>setState(prev=>({...prev,extra:{...prev.extra,
+        brain:{...prev.extra.brain,research},
+        capabilities:{...prev.extra.capabilities,webSearch:research!=='off'}
+      }}))}
+      onConnectors={()=>{setAttachmentSheetOpen(false);openHub('connectors')}}
+      onSkills={()=>{setAttachmentSheetOpen(false);openHub('skills')}}
+      onIntelligence={()=>{setAttachmentSheetOpen(false);openHub('intelligence')}}
+    />
     <WorkspaceSheet open={workspaceOpen} onClose={() => setWorkspaceOpen(false)}
       projects={state.projects} activeId={state.selectedProjectId}
       onCreate={handleProject} onSelect={projectId => setState(s => ({ ...s, selectedProjectId: projectId }))}
