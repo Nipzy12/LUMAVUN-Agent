@@ -9,6 +9,7 @@ export function mcpFunctionName(connectorId:string,toolName:string):string {
 }
 export type MCPTool = {name:string;description?:string;inputSchema?:{type?:string;properties?:Record<string,unknown>;required?:string[]} };
 const sessions=new Map<string,string>();
+export function clearMcpSession(connectorId:string){sessions.delete(connectorId)}
 let nextId=1;
 async function rpc(connector:Connector,token:string,method:string,params?:unknown):Promise<unknown> {
   const headers:Record<string,string>={
