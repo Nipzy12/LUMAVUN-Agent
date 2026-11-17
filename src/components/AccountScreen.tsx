@@ -39,7 +39,7 @@ function Row({icon,title,detail,subtitle,onPress,checked,onToggle,last=false}:{
   onPress?:()=>void;checked?:boolean;onToggle?:(next:boolean)=>void;last?:boolean
 }){
   return <Pressable accessibilityRole={onToggle?'switch':'button'}
-    onPress={onPress||(onToggle?()=>onToggle(!checked):undefined)}
+    onPress={onPress}
     accessibilityState={{checked,disabled:!onPress&&!onToggle}}
     style={{minHeight:subtitle?76:63,paddingHorizontal:17,paddingVertical:13,
       flexDirection:'row',alignItems:'center',gap:12,
