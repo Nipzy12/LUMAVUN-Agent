@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LUMAVUN Desktop</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-theme="light">
+  <div id="app" class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Navigasi utama">
+      <div class="sidebar-top">
+        <button class="brand-row" data-action="home" title="Beranda LUMAVUN">
+          <span class="brand-symbol" aria-hidden="true"><span class="brand-star">✦</span></span>
+          <span class="brand-title">LUMAVUN</span>
+          <span class="brand-label">DESKTOP</span>
+        </button>
+        <button class="icon-button sidebar-collapse" data-action="toggle-sidebar" title="Tutup sidebar" aria-label="Tutup sidebar">
+          <svg viewBox="0 0 24 24" class="feather"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+      </div>
+      <div class="sidebar-content">
+        <button class="sidebar-link action-new" data-action="new-chat"><span class="glyph">✎</span><span>Chat baru</span><span class="shortcut">Ctrl N</span></button>
+        <button class="sidebar-link" data-action="search"><span class="glyph">⌕</span><span>Cari percakapan</span><span class="shortcut">Ctrl K</span></button>
+        <div class="nav-spacing"></div>
+        <button class="sidebar-link" data-page="images"><span class="glyph">▧</span><span>Gambar</span></button>
+        <button class="sidebar-link" data-page="library"><span class="glyph">▤</span><span>Pustaka</span></button>
+        <button class="sidebar-link" data-page="work"><span class="glyph">⌘</span><span>Code Work</span></button>
+        <button class="sidebar-link" data-page="integrations"><span class="glyph">♧</span><span>Integrasi</span></button>
+        <div class="nav-section-title"><span>Proyek</span><button class="icon-button tiny" data-action="new-project" aria-label="Buat proyek baru" title="Buat proyek">＋</button></div>
+        <div id="projectList" class="sidebar-list"></div>
+        <div class="nav-section-title"><span>Terbaru</span><button class="icon-button tiny" data-page="chats" aria-label="Lihat seluruh chat" title="Lihat semua chat">⌕</button></div>
+        <div id="chatList" class="sidebar-list"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <button id="accountTrigger" class="account-trigger" data-action="account-menu" aria-expanded="false">
+          <span id="avatar" class="avatar">L</span>
+          <span class="account-text"><strong id="accountName">Pengguna</strong><small>Workspace pribadi</small></span>
+          <span class="account-dots">•••</span>
+        </button>
+      </div>
+      <div id="sidebarResize" class="sidebar-resize" title="Geser untuk ubah lebar sidebar"></div>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <div class="header-left">
+          <button class="icon-button collapsed-menu" data-action="toggle-sidebar" title="Tampilkan sidebar" aria-label="Buka sidebar">
+            <svg viewBox="0 0 24 24" class="feather"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+          </button>
+          <button id="modelTrigger" class="model-trigger" data-action="model-menu" aria-haspopup="true"><span class="model-brand">LUMAVUN</span><span id="modelName">Pilih model</span><span class="chevron">⌄</span></button>
+        </div>
+        <div class="header-right">
+          <span class="privacy-indicator"><span class="status-dot"></span> Lokal & pribadi</span>
+          <button class="icon-button" data-action="new-chat" aria-label="Chat baru" title="Chat baru">✎</button>
+          <button class="header-share" data-action="export-chat">↗ <span>Bagikan</span></button>
+        </div>
+      </header>
+
+      <div id="pageArea" class="page-area">
+        <div id="homePage" class="home-page">
+          <div class="home-brand"><span class="brand-symbol large" aria-hidden="true"><span class="brand-star">✦</span></span></div>
+          <h1 id="homeGreeting">Apa yang ingin kamu buat hari ini?</h1>
+          <p>Bayangkan lebih jauh. Kerjakan bersama LUMAVUN.</p>
+          <div id="suggestions" class="suggestion-grid">
+            <button data-suggestion="Bantu saya membuat aplikasi desktop yang elegan">✎ <span>Buat aplikasi</span></button>
+            <button data-suggestion="Jelaskan konsep AI dengan contoh praktis">✦ <span>Belajar sesuatu</span></button>
+            <button data-suggestion="Tinjau kode dan jelaskan perbaikannya">⌘ <span>Review kode</span></button>
+            <button data-suggestion="Bantu susun ide dan rencana proyek">◈ <span>Rencanakan proyek</span></button>
+          </div>
+        </div>
+        <div id="messagesPage" class="messages-page" hidden><div id="messages" class="messages"></div></div>
+        <div id="secondaryPage" class="secondary-page" hidden></div>
+      </div>
+
+      <section id="composerRegion" class="composer-region" aria-label="Tulis pesan">
+        <div class="composer">
+          <div id="attachmentPreview" class="attachment-preview" hidden></div>
+          <textarea id="promptInput" rows="2" placeholder="Tanyakan apa saja ke LUMAVUN" aria-label="Pesan untuk LUMAVUN" maxlength="24000"></textarea>
+          <div class="composer-footer">
+            <div class="composer-tools">
+              <button class="circle-tool" data-action="attach-menu" aria-label="Tambahkan ke pesan" title="Lampiran dan alat">＋</button>
+              <button id="researchToggle" class="tool-pill" data-action="research-toggle" title="Ubah gaya jawaban (bukan pencarian web otomatis)">✧ <span>Pikir mendalam</span></button>
+              <button id="projectChip" class="tool-pill" data-action="project-menu" hidden>▢ <span>Proyek</span> ⌄</button>
+            </div>
+            <div class="composer-tools">
+              <button id="dictationButton" class="circle-tool" data-action="dictate" aria-label="Dikte suara" title="Dikte bila didukung Windows">♬</button>
+              <button id="sendButton" class="send-button" data-action="send" aria-label="Kirim">↑</button>
+            </div>
+          </div>
+        </div>
+        <p class="composer-disclaimer">LUMAVUN dapat membuat kesalahan. Periksa informasi penting. Permintaan cloud dikirim ke provider yang dipilih.</p>
+      </section>
+    </main>
+  </div>
+
+  <div id="popover" class="popover" hidden></div>
+  <div id="searchModal" class="overlay" hidden>
+    <div class="search-dialog" role="dialog" aria-modal="true" aria-label="Cari dalam LUMAVUN">
+      <div class="search-field"><span>⌕</span><input id="searchInput" type="search" placeholder="Cari chat dan proyek..." aria-label="Cari chat dan proyek"><button data-action="close-search" aria-label="Tutup">Esc</button></div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </div>
+  <div id="settingsModal" class="overlay" hidden>
+    <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsHeading">
+      <aside class="settings-sidebar">
+        <div class="settings-sidebar-top">
+          <strong id="settingsHeading">Pengaturan</strong>
+          <button class="icon-button" data-action="close-settings" title="Tutup" aria-label="Tutup pengaturan">×</button>
+        </div>
+        <input id="settingsSearch" class="settings-search" type="search" placeholder="Cari pengaturan..." aria-label="Cari pengaturan">
+        <nav id="settingsNav" class="settings-nav" aria-label="Kategori pengaturan">
+          <button data-settings="profile" class="setting-nav-item">♙ <span>Profil</span></button>
+          <div class="settings-nav-heading">AKUN</div>
+          <button data-settings="account" class="setting-nav-item">♧ <span>Akun</span></button>
+          <div class="settings-nav-heading">APLIKASI</div>
+          <button data-settings="general" class="setting-nav-item">⚙ <span>Umum</span></button>
+          <button data-settings="appearance" class="setting-nav-item">◐ <span>Tampilan</span></button>
+          <button data-settings="personalization" class="setting-nav-item">✦ <span>Personalisasi</span></button>
+          <button data-settings="memory" class="setting-nav-item">♙ <span>Memori</span></button>
+          <div class="settings-nav-heading">MODEL & DATA</div>
+          <button data-settings="provider" class="setting-nav-item">⚡ <span>Provider AI</span></button>
+          <button data-settings="integrations" class="setting-nav-item">♧ <span>Integrasi</span></button>
+          <button data-settings="data" class="setting-nav-item">▤ <span>Data & Privasi</span></button>
+          <button data-settings="about" class="setting-nav-item">ⓘ <span>Tentang</span></button>
+        </nav>
+      </aside>
+      <section class="settings-panel">
+        <div class="mobile-settings-top"><button data-action="settings-back">‹</button><strong id="settingsMobileTitle">Pengaturan</strong></div>
+        <div id="settingsBody" class="settings-body"></div>
+      </section>
+    </div>
+  </div>
+  <input id="filePicker" type="file" accept="image/png,image/jpeg,image/webp,.txt,.md,.js,.ts,.tsx,.json,.py,.html,.css,.csv,.log" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="./app.js"></script>
+</body>
+</html>
