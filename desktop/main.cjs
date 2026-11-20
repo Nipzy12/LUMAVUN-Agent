@@ -5,7 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const defaults = () => ({
-  chats: [], projects: [], images: [], selectedChatId: null, selectedProjectId: null,
+  chats: [], projects: [], images: [], library: [], selectedChatId: null, selectedProjectId: null,
   preferences: {
     name: 'Pengguna', language: 'id', theme: 'system', accent: '#7161cf',
     personality: 'Bawaan', warmth: 'normal', enthusiasm: 'normal',
@@ -29,6 +29,7 @@ function cleanState(input) {
     chats: Array.isArray(input.chats) ? input.chats.slice(0, 2000) : [],
     projects: Array.isArray(input.projects) ? input.projects.slice(0, 500) : [],
     images: Array.isArray(input.images) ? input.images.slice(0, 1000) : [],
+    library: Array.isArray(input.library) ? input.library.slice(0, 2000) : [],
     selectedChatId: typeof input.selectedChatId === 'string' ? input.selectedChatId : null,
     selectedProjectId: typeof input.selectedProjectId === 'string' ? input.selectedProjectId : null,
     preferences: {...base.preferences, ...(input.preferences && typeof input.preferences === 'object' ? input.preferences : {})},
