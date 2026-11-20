@@ -219,6 +219,7 @@
     theme(); renderSidebar();
     const current = db.provider.model ? db.provider.model.split('/').pop() : 'Pilih model';
     $('modelName').textContent = current;
+    $('temporaryToggle').classList.toggle('selected',temporaryMode);
     const chatLike = page === 'chat' || page === 'work';
     if (chatLike) renderChatPage();
     else {
@@ -360,7 +361,7 @@
     } else if (selectedSettings === 'general') {
       panel.innerHTML = settingsHeading('Umum', 'Atur bahasa dan perilaku dasar aplikasi.') +
         '<div class="settings-section">' +
-        settingRow('Bahasa aplikasi','Bahasa UI dan instruksi jawaban AI',
+        settingRow('Bahasa jawaban AI','Antarmuka versi ini masih menggunakan Bahasa Indonesia',
           selector('language',[['id','Bahasa Indonesia'],['en','English (AI responses)']],p.language)) +
         settingRow('Tombol untuk kirim','Enter mengirim, Shift+Enter membuat baris baru',
           selector('sendShortcut',[['enter','Enter'],['ctrl','Ctrl+Enter']],p.sendShortcut)) +
@@ -545,6 +546,13 @@
     const action = el.dataset.action;
     const id = el.dataset.chatId || '';
     if (action === 'new-chat') newChat('chat');
+    else if (action === 'temporary-chat') {
+      if(isSending) return toast('Hentikan respons sebelum mengubah mode chat');
+      temporaryMode=!temporaryMode;
+      temporaryMessages=[];db.selectedChatId=null;db.selectedProjectId=null;
+      page='chat';save();render();
+      toast(temporaryMode?'Chat sementara aktif: percakapan tidak disimpan':'Chat sementara dimatikan');
+    }
     else if (action === 'home') newChat('chat');
     else if (action === 'toggle-sidebar') toggleSidebar();
     else if (action === 'account-menu') accountMenu(el);
