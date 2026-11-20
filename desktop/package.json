@@ -10,17 +10,28 @@
     "dist": "electron-builder --win portable --x64"
   },
   "devDependencies": {
-    "electron": "35.3.2",
-    "electron-builder": "26.0.12"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
   },
   "build": {
     "appId": "com.lumavun.desktop",
     "productName": "LUMAVUN Desktop",
     "asar": true,
-    "files": ["main.cjs", "preload.cjs", "app.js", "index.html", "styles.css", "package.json"],
-    "directories": { "output": "dist" },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "app.js",
+      "index.html",
+      "styles.css",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
     "win": {
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "signAndEditExecutable": false,
       "artifactName": "LUMAVUN-Desktop-${version}-portable.${ext}"
     }
