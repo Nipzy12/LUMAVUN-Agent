@@ -174,7 +174,7 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
         <Row icon="info" title="Tentang LUMAVUN" detail="Imagine Beyond the Mist"
           onPress={()=>Alert.alert('LUMAVUN Agent',
             'Aplikasi AI, model lokal, MCP, dan Code Work. Fitur tertentu membutuhkan server, izin atau model yang mendukung.') } last/>
-      </Group>
+      </Group>}
       <Text style={{color:CL.muted,fontSize:11,textAlign:'center',marginTop:10}}>
         LUMAVUN · Imagine Beyond the Mist
       </Text>
