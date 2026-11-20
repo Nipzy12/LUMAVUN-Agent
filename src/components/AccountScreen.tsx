@@ -1,5 +1,5 @@
-import React from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { UserPreferences } from '../store';
 import type { ExtraState } from '../featureState';
@@ -64,6 +64,8 @@ function SectionTitle({children}:{children:string}){
 export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,memoryCount,
   hasProviderKey,onBack,onNavigate,onUpdate,onUpdateExtra,onProvider,onModels,onWorkspace,
   onClearChats,onDisconnectProvider,onDeleteAccount,onHub}:Props){
+  const [search, setSearch] = useState('');
+  const matches = (terms:string) => !search.trim() || terms.toLocaleLowerCase('id').includes(search.trim().toLocaleLowerCase('id'));
   if(screen!=='settings'){
     return <PersonalSettingsScreen page={screen} profile={profile} extra={extra}
       onProfile={onUpdate} onExtra={onUpdateExtra} onBack={onBack} onNavigate={onNavigate}
@@ -96,6 +98,16 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
     </View>
     <ScrollView keyboardShouldPersistTaps="handled"
       contentContainerStyle={{paddingHorizontal:19,paddingTop:18,paddingBottom:54}}>
+      <View style={{backgroundColor:CL.card,borderColor:CL.line,borderWidth:1,borderRadius:17,
+        flexDirection:'row',alignItems:'center',paddingHorizontal:14,marginBottom:18,gap:10}}>
+        <Feather name="search" size={19} color={CL.muted}/>
+        <TextInput accessibilityLabel="Cari pengaturan LUMAVUN" placeholder="Cari pengaturan"
+          placeholderTextColor={CL.muted} value={search} onChangeText={setSearch}
+          style={{flex:1,minHeight:48,color:CL.text,fontSize:15}}/>
+        {!!search && <Pressable accessibilityRole="button" accessibilityLabel="Hapus pencarian"
+          onPress={()=>setSearch('')}><Feather name="x" size={19} color={CL.muted}/></Pressable>}
+      </View>
+      {matches('akun personalisasi profil umum sesuaikan lumavun kepribadian') && <>
       <SectionTitle>AKUN & PERSONALISASI</SectionTitle>
       <Group>
         <Row icon="user" title="Profil" detail={profile.name}
@@ -106,6 +118,8 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
           subtitle="Kepribadian, memori, plugin, dan layanan terhubung"
           onPress={()=>onNavigate('customize')} last/>
       </Group>
+      </>}
+      {matches('workspace model ai provider api proyek percakapan') && <>
       <SectionTitle>WORKSPACE & MODEL AI</SectionTitle>
       <Group>
         <Row icon="briefcase" title="Workspace" detail="Pribadi" onPress={onWorkspace}/>
@@ -116,6 +130,8 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
         <Row icon="message-circle" title="Percakapan" detail={String(chatsCount)}
           onPress={()=>onHub('usage')} last/>
       </Group>
+      </>}
+      {matches('kemampuan kontrol konektor mcp skill memori izin penggunaan batasan') && <>
       <SectionTitle>KEMAMPUAN & KONTROL</SectionTitle>
       <Group>
         <Row icon="zap" title="Kemampuan" onPress={()=>onHub('capabilities')}/>
@@ -127,6 +143,8 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
         <Row icon="shield" title="Izin" onPress={()=>onHub('permissions')}/>
         <Row icon="activity" title="Penggunaan dan batasan" onPress={()=>onHub('usage')} last/>
       </Group>
+      </>}
+      {matches('tampilan perangkat mode warna aksen ukuran teks haptik bilah tab') && <>
       <SectionTitle>TAMPILAN & PERANGKAT</SectionTitle>
       <Group>
         <Row icon="moon" title="Mode warna" detail="Gelap (aplikasi utama)"
@@ -140,6 +158,8 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
         <Row icon="maximize" title="Sembunyikan bilah tab saat chat" checked={profile.hideTabs}
           onToggle={value=>onUpdate({...profile,hideTabs:value})} last/>
       </Group>
+      </>}
+      {matches('data privasi penyimpanan lokal hapus riwayat chat putuskan provider') && <>
       <SectionTitle>DATA & PRIVASI</SectionTitle>
       <Group>
         <Row icon="hard-drive" title="Penyimpanan lokal"
@@ -149,11 +169,12 @@ export function AccountScreen({screen,profile,extra,chatsCount,projectsCount,mem
         <Row icon="trash-2" title="Hapus riwayat chat" onPress={confirmClear}/>
         <Row icon="log-out" title="Putuskan API provider" onPress={confirmDisconnect} last/>
       </Group>
-      <Group>
+      </>}
+      {matches('tentang lumavun informasi aplikasi') && <Group>
         <Row icon="info" title="Tentang LUMAVUN" detail="Imagine Beyond the Mist"
           onPress={()=>Alert.alert('LUMAVUN Agent',
             'Aplikasi AI, model lokal, MCP, dan Code Work. Fitur tertentu membutuhkan server, izin atau model yang mendukung.') } last/>
-      </Group>
+      </Group>}
       <Text style={{color:CL.muted,fontSize:11,textAlign:'center',marginTop:10}}>
         LUMAVUN · Imagine Beyond the Mist
       </Text>
