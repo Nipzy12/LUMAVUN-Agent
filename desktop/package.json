@@ -1,0 +1,39 @@
+{
+  "name": "lumavun-desktop",
+  "version": "0.1.0",
+  "description": "LUMAVUN AI desktop companion for Windows",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main.cjs && node --check preload.cjs && node --check app.js",
+    "dist": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.lumavun.desktop",
+    "productName": "LUMAVUN Desktop",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "app.js",
+      "index.html",
+      "styles.css",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "LUMAVUN-Desktop-${version}-portable.${ext}"
+    }
+  }
+}

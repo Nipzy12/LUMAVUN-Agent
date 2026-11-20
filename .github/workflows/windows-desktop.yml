@@ -1,0 +1,59 @@
+name: LUMAVUN Windows Desktop EXE
+
+on:
+  push:
+    branches:
+      - feat/lumavun-chatgpt-desktop-exe
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/windows-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install desktop packages
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Verify JavaScript syntax
+        working-directory: desktop
+        run: npm run check
+      - name: Run desktop smoke tests
+        working-directory: desktop
+        run: node --test tests/smoke.test.cjs
+      - name: Build Windows portable executable
+        working-directory: desktop
+        run: npm run dist
+      - name: Verify executable exists and hash it
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem 'desktop/dist/*.exe' -ErrorAction SilentlyContinue)
+          if ($files.Count -lt 1) { throw 'Windows EXE missing' }
+          foreach ($file in $files) {
+            if ($file.Length -lt 1000000) { throw 'Windows EXE appears too small' }
+            Get-FileHash $file.FullName -Algorithm SHA256 | Format-List
+          }
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumavun-desktop-windows-x64
+          path: desktop/dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
